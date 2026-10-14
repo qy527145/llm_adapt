@@ -1,8 +1,8 @@
-//! Configuration model shared between every CLI / TUI / Web command.
+//! 各 CLI / TUI / Web 命令共用的配置模型。
 //!
-//! On disk, configuration lives at `~/.llm-adapt/config.toml` (override via
-//! `LLM_ADAPT_HOME`). API keys may reference environment variables using the
-//! `env:VAR_NAME` syntax, which gets resolved lazily by [`Profile::resolved_api_key`].
+//! 配置落盘于 `~/.llm-adapt/config.toml`（可用 `LLM_ADAPT_HOME` 覆盖）。
+//! API key 可用 `env:VAR_NAME` 语法引用环境变量，由 [`Profile::resolved_api_key`]
+//! 惰性解析。
 
 pub mod store;
 
@@ -10,16 +10,16 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Top-level on-disk config.
+/// 顶层落盘配置。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    /// Name of the profile that commands use when `--profile` is not supplied.
+    /// 未提供 `--profile` 时命令使用的 profile 名。
     #[serde(default)]
     pub active_profile: Option<String>,
-    /// All known profiles, keyed by name. `BTreeMap` keeps the on-disk order stable.
+    /// 全部已知 profile，按名称索引。`BTreeMap` 保证落盘顺序稳定。
     #[serde(default)]
     pub profiles: BTreeMap<String, Profile>,
-    /// Default port for `llm-adapt web` (the next-phase Web panel).
+    /// `llm-adapt web`（下一阶段的 Web 面板）的默认端口。
     #[serde(default = "default_web_port")]
     pub web_port: u16,
 }
@@ -27,7 +27,7 @@ pub struct Settings {
 fn default_web_port() -> u16 { 8787 }
 
 impl Settings {
-    /// Return the active profile (or the only one, when there's only one).
+    /// 返回 active profile（若只有一个，就返回那一个）。
     pub fn active(&self) -> Option<(&str, &Profile)> {
         let name = self.active_profile.as_deref().or_else(|| {
             if self.profiles.len() == 1 {
@@ -40,16 +40,16 @@ impl Settings {
     }
 }
 
-/// One named environment (e.g. `dev`, `prod`).
+/// 一个具名环境（如 `dev`、`prod`）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub base_url: String,
-    /// API key. Use `env:VAR_NAME` to read from an environment variable.
+    /// API key。用 `env:VAR_NAME` 从环境变量读取。
     pub api_key: String,
-    /// Default `api_format` (handler key) used when `--api-format` is omitted.
+    /// 省略 `--api-format` 时使用的默认 `api_format`（handler key）。
     #[serde(default = "default_api_format")]
     pub api_format: String,
-    /// Default model name.
+    /// 默认模型名。
     #[serde(default)]
     pub default_model: Option<String>,
     #[serde(default)]
@@ -90,7 +90,7 @@ impl Default for Profile {
 }
 
 impl Profile {
-    /// Resolve `env:VAR_NAME` placeholders to the actual value.
+    /// 把 `env:VAR_NAME` 占位符解析成实际值。
     pub fn resolved_api_key(&self) -> String {
         if let Some(var) = self.api_key.strip_prefix("env:") {
             std::env::var(var).unwrap_or_default()
@@ -99,7 +99,7 @@ impl Profile {
         }
     }
 
-    /// Masked rendering for display purposes.
+    /// 用于展示的掩码渲染。
     pub fn masked_api_key(&self) -> String {
         let raw = if self.api_key.starts_with("env:") {
             self.api_key.clone()
@@ -109,7 +109,7 @@ impl Profile {
         mask_secret(&raw)
     }
 
-    /// Build a runtime [`llm_adapt_core::ClientConfig`] from this profile.
+    /// 由该 profile 构造运行时的 [`llm_adapt_core::ClientConfig`]。
     pub fn to_client_config(&self) -> llm_adapt_core::ClientConfig {
         use std::time::Duration;
 
@@ -136,7 +136,7 @@ impl Profile {
     }
 }
 
-/// Mask all but the last 4 chars of a secret, preserving rough length info.
+/// 只保留 secret 末 4 个字符，其余打码，同时保留大致长度信息。
 pub fn mask_secret(s: &str) -> String {
     if s.is_empty() {
         return "<unset>".into();

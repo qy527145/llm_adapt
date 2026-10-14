@@ -1,8 +1,8 @@
-//! HTTP layer.
+//! HTTP 层。
 //!
-//! The HTTP layer is independent of any provider: handlers produce
-//! [`crate::handler::HttpRequest`] descriptions, and [`HttpExecutor`] turns them
-//! into actual network calls via `reqwest`.
+//! HTTP 层不依赖任何具体提供商：handler 产出
+//! [`crate::handler::HttpRequest`] 描述，[`HttpExecutor`] 再通过 `reqwest`
+//! 把它们变成真正的网络调用。
 
 pub mod config;
 pub mod hook;
@@ -76,8 +76,8 @@ pub struct RawHttpResponse {
 pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, LLMError>> + Send>>;
 
 
-/// Stateful HTTP executor. Holds a `reqwest::Client`, configuration, retry
-/// policy, and a list of hooks. Cloning is cheap — internals are `Arc`-shared.
+/// 有状态的 HTTP 执行器。持有 `reqwest::Client`、配置、重试策略与一组钩子。
+/// 克隆开销很小 —— 内部都是 `Arc` 共享。
 #[derive(Clone)]
 pub struct HttpExecutor {
     client: Client,
@@ -87,9 +87,8 @@ pub struct HttpExecutor {
 }
 
 impl HttpExecutor {
-    /// Build an executor from the given configuration. Returns
-    /// [`LLMError::Config`] if the underlying `reqwest::Client` cannot be built
-    /// (typically a bad proxy URL).
+    /// 用给定配置构造执行器。底层 `reqwest::Client` 建不出来时（通常是代理
+    /// URL 有问题）返回 [`LLMError::Config`]。
     pub fn new(config: ClientConfig) -> Result<Self, LLMError> {
         Self::with_retry(config, RetryPolicy::default())
     }
@@ -112,14 +111,13 @@ impl HttpExecutor {
         &self.retry
     }
 
-    /// Register a hook. Hooks fire in registration order.
+    /// 注册一个钩子。钩子按注册顺序触发。
     pub fn add_hook(&mut self, hook: Arc<dyn RequestHook>) {
         self.hooks.push(hook);
     }
 
-    /// Execute a non-streaming request. On a successful HTTP response (2xx) the
-    /// raw body is returned; non-2xx responses are converted into the matching
-    /// [`LLMError`] variant.
+    /// 执行非流式请求。HTTP 响应成功（2xx）时返回原始 body；
+    /// 非 2xx 响应会被转换成对应的 [`LLMError`] 变体。
     pub async fn execute(&self, req: &HttpRequest) -> Result<RawHttpResponse, LLMError> {
         let mut attempt = 0u32;
         loop {
@@ -158,9 +156,9 @@ impl HttpExecutor {
         }
     }
 
-    /// Execute a streaming request. Returns a [`ByteStream`] of body chunks plus
-    /// a [`StreamMeta`] describing the response head (status, headers). Stream
-    /// requests are not retried — callers are expected to drive them to completion.
+    /// 执行流式请求。返回 body 分片的 [`ByteStream`]，外加描述响应头
+    /// （状态、headers）的 [`StreamMeta`]。流式请求不重试 ——
+    /// 由调用方负责把它驱动到结束。
     pub async fn execute_stream(
         &self,
         req: &HttpRequest,
@@ -232,7 +230,7 @@ impl HttpExecutor {
     }
 }
 
-/// Metadata about a streaming response head.
+/// 流式响应头的元数据。
 #[derive(Debug, Clone)]
 pub struct StreamMeta {
     pub status: u16,
@@ -250,7 +248,7 @@ fn build_reqwest_client(config: &ClientConfig) -> Result<Client, LLMError> {
             .map_err(|e| LLMError::Config { message: format!("invalid proxy '{scheme}': {e}") })?;
         builder = builder.proxy(proxy);
     } else {
-        // Explicitly disable picking up system proxy unless requested.
+        // 除非明确要求，否则显式禁用系统代理。
         builder = builder.no_proxy();
     }
     builder
@@ -306,8 +304,7 @@ fn error_from_status(raw: &RawHttpResponse) -> Option<LLMError> {
     })
 }
 
-/// Convenience for buffering a streaming body — used by tests and the CLI
-/// `--show-raw` flag.
+/// 把流式 body 缓冲成整块的便捷函数 —— 测试与 CLI 的 `--show-raw` 会用到。
 pub async fn collect_byte_stream(mut stream: ByteStream) -> Result<Bytes, LLMError> {
     let mut buf = bytes::BytesMut::new();
     while let Some(chunk) = stream.next().await {

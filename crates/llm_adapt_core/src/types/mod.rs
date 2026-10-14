@@ -1,4 +1,4 @@
-//! Unified type system shared by every handler.
+//! 所有 handler 共用的统一类型系统。
 
 pub mod cache;
 pub mod conversation;

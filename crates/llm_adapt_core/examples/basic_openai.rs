@@ -1,6 +1,6 @@
 //! `cargo run -p llm_adapt_core --example basic_openai`
 //!
-//! Requires `OPENAI_API_KEY` in the environment.
+//! 环境变量里需设置 `OPENAI_API_KEY`。
 
 use llm_adapt_core::{ChatRequest, ClientConfig, Conversation, LLMClient};
 

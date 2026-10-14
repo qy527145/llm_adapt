@@ -9,9 +9,9 @@ use crate::output::{emit_json, OutputFormat};
 
 #[derive(Debug, Subcommand)]
 pub enum HandlersCmd {
-    /// List all registered protocol handlers.
+    /// 列出所有已注册的协议 handler。
     List,
-    /// Show capability metadata for each (api_format, model) pair we know about.
+    /// 显示已知的每个 (api_format, model) 对的能力元数据。
     Capabilities,
 }
 

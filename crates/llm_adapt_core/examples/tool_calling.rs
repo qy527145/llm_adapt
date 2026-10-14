@@ -1,6 +1,6 @@
 //! `cargo run -p llm_adapt_core --example tool_calling`
 //!
-//! Walks one full tool-use round-trip: ask → tool call → tool result → final answer.
+//! 走完一整轮工具调用：提问 → 工具调用 → 工具结果 → 最终回答。
 
 use llm_adapt_core::{
     AssistantBlock, ChatRequest, ClientConfig, Conversation, FinishReason, LLMClient,
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     request.tools = vec![weather_tool()];
 
-    // Round 1 — expect a tool call.
+    // 第一轮 —— 预期会返回一次工具调用。
     let resp = client.chat(&request).await?;
     assert_eq!(resp.finish_reason, FinishReason::ToolCall, "expected a tool call");
 
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("no tool call in response");
     println!("model wants to call {tool_name}({args_str}) with id={tool_id}");
 
-    // Round 2 — echo the assistant turn back, then a structured tool result.
+    // 第二轮 —— 把 assistant 那一轮回传，再补上结构化的工具结果。
     request
         .conversation
         .push(Turn::Assistant(resp.message.clone()));

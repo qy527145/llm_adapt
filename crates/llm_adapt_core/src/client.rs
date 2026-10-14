@@ -20,7 +20,7 @@ use crate::protocol::{decode_stream, Codec, ProtocolId, ProtocolRegistry};
 use crate::sse::ChunkStream;
 use crate::types::{lift_request, lower_response, ChatRequest, ChatResponse};
 
-/// Application-facing client. Inexpensive to clone (Arcs internally).
+/// 面向应用的客户端。克隆开销很小（内部都是 Arc）。
 #[derive(Clone)]
 pub struct LLMClient {
     registry: ProtocolRegistry,
@@ -28,7 +28,7 @@ pub struct LLMClient {
     capabilities: ModelCapabilityTable,
 }
 
-/// Builder for [`LLMClient`].
+/// [`LLMClient`] 的构造器。
 pub struct LLMClientBuilder {
     config: ClientConfig,
     registry: ProtocolRegistry,
@@ -48,7 +48,7 @@ impl LLMClient {
         }
     }
 
-    /// Quick start: build a default-configured client.
+    /// 快速上手：构造一个默认配置的客户端。
     pub fn new(config: ClientConfig) -> Result<Self, LLMError> {
         Self::builder(config).build()
     }
@@ -127,14 +127,14 @@ impl LLMClient {
     // ergonomic 入口（省事，但 lower 时可能丢块）
     // ------------------------------------------------------------------
 
-    /// Render the unified request into a concrete HTTP request without sending
-    /// it. Used by `llm-adapt preview` and the debug UIs.
+    /// 把统一请求渲染成具体的 HTTP 请求但不发送。`llm-adapt preview`
+    /// 与调试 UI 会用到。
     pub fn preview(&self, request: &ChatRequest) -> Result<HttpRequest, LLMError> {
         let protocol = ProtocolId::new(&request.api_format);
         self.preview_ir(&protocol, &lift_request(request))
     }
 
-    /// Send a non-streaming chat request and parse the response.
+    /// 发送非流式对话请求并解析响应。
     pub async fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, LLMError> {
         if request.stream {
             return Err(LLMError::validation(
@@ -149,7 +149,7 @@ impl LLMClient {
         Ok(resp)
     }
 
-    /// Send a streaming chat request and return a stream of normalised events.
+    /// 发送流式对话请求，返回归一化事件的流。
     pub async fn chat_stream(&self, request: &ChatRequest) -> Result<ChunkStream, LLMError> {
         let protocol = ProtocolId::new(&request.api_format);
         self.chat_stream_ir(&protocol, &lift_request(request)).await
@@ -171,8 +171,7 @@ fn request_id_from_headers(raw: &RawHttpResponse) -> Option<String> {
 }
 
 impl LLMClientBuilder {
-    /// Disable automatic registration of feature-gated handlers. Useful when
-    /// the caller wants full control over the registry.
+    /// 关闭默认 handler 的自动注册。调用方想完全掌控注册表时有用。
     pub fn without_default_handlers(mut self) -> Self {
         self.install_defaults = false;
         self

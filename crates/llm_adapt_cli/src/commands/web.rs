@@ -1,4 +1,4 @@
-//! Placeholder for the next-phase Web management panel.
+//! 下一阶段 Web 管理面板的占位。
 
 use anyhow::Result;
 use clap::Args;
@@ -7,13 +7,13 @@ use crate::output::OutputFormat;
 
 #[derive(Debug, Args)]
 pub struct WebArgs {
-    /// Port to bind the Web panel to. Defaults to the value in config.toml.
+    /// Web 面板绑定的端口。默认取 config.toml 中的值。
     #[arg(long)]
     pub port: Option<u16>,
-    /// Host/interface to bind to.
+    /// 绑定的 host / 网卡接口。
     #[arg(long, default_value = "127.0.0.1")]
     pub host: String,
-    /// Open the browser automatically after the server starts.
+    /// 服务启动后自动打开浏览器。
     #[arg(long, default_value_t = false)]
     pub open: bool,
 }

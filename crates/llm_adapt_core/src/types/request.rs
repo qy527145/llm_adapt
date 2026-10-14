@@ -1,4 +1,4 @@
-//! Unified request representation.
+//! 统一的请求表示。
 
 use serde::{Deserialize, Serialize};
 
@@ -8,17 +8,17 @@ use super::tool::ToolDefinition;
 // 这两个是 wire 概念（决定请求体长什么样），定义在 IR 层，这里再导出。
 pub use crate::protocol::ir::{ResponseFormat, ToolChoice};
 
-/// Top-level request shared by every provider.
+/// 所有提供商共用的顶层请求。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
-    /// Provider-side model identifier.
+    /// 提供商侧的模型标识。
     pub model: String,
-    /// Routing key into [`crate::handler::HandlerRegistry`].
+    /// 用于路由的键，对应 [`crate::handler::HandlerRegistry`]。
     pub api_format: String,
-    /// Role-aware conversation history.
+    /// 角色感知的对话历史。
     pub conversation: Conversation,
 
-    // ---- generation controls ----
+    // ---- 生成参数 ----
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -30,7 +30,7 @@ pub struct ChatRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
 
-    // ---- capability toggles ----
+    // ---- 能力开关 ----
     #[serde(default)]
     pub stream: bool,
     #[serde(default)]
@@ -38,30 +38,29 @@ pub struct ChatRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_budget: Option<u32>,
 
-    // ---- tooling ----
+    // ---- 工具 ----
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
     #[serde(default)]
     pub tool_choice: ToolChoice,
 
-    // ---- response shape ----
+    // ---- 响应形状 ----
     #[serde(default)]
     pub response_format: ResponseFormat,
 
-    // ---- tracing ----
+    // ---- 追踪 ----
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
 }
 
 impl ChatRequest {
-    /// Common-case constructor: OpenAI-compatible request with the given
-    /// conversation.
+    /// 常见场景构造：给定对话，构造 OpenAI 兼容请求。
     pub fn openai(model: impl Into<String>, conversation: Conversation) -> Self {
         Self::new(model, "openai_compat", conversation)
     }
 
-    /// Common-case constructor: Anthropic Messages request. `max_tokens`
-    /// defaults to 1024 because Anthropic requires it.
+    /// 常见场景构造：Anthropic Messages 请求。`max_tokens` 默认 1024，
+    /// 因为 Anthropic 要求必须带它。
     pub fn anthropic(model: impl Into<String>, conversation: Conversation) -> Self {
         let mut req = Self::new(model, "anthropic_v2", conversation);
         req.max_tokens = Some(1024);

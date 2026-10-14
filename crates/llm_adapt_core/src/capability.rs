@@ -1,8 +1,8 @@
-//! Model capability metadata.
+//! 模型能力元数据。
 //!
-//! Provides a shared, mutable table of `(api_format, model) -> ModelCapabilities`
-//! that upper layers (Agents, CLI, debug UIs) consult to decide whether a request
-//! is admissible (e.g. fits the context window) or which features to expose.
+//! 提供一张共享、可变的 `(api_format, model) -> ModelCapabilities` 表，
+//! 供上层（Agent、CLI、调试 UI）查询：一个请求是否可接受（如是否装得下
+//! 上下文窗口）、以及该暴露哪些特性。
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::ir::ProtocolId;
 
-/// Capability and quota metadata for a single model.
+/// 单个模型的能力与配额元数据。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModelCapabilities {
     pub context_window: u32,
@@ -24,8 +24,7 @@ pub struct ModelCapabilities {
 }
 
 impl ModelCapabilities {
-    /// Fallback used when no entry is registered for a model — conservative
-    /// values that won't lie about capability presence.
+    /// 某模型没有注册条目时的兜底 —— 取值保守，不对「有没有某能力」说谎。
     pub fn unknown() -> Self {
         Self {
             context_window: 8_192,
@@ -39,7 +38,7 @@ impl ModelCapabilities {
     }
 }
 
-/// Thread-safe capability table. Cloning is cheap; mutation goes through `RwLock`.
+/// 线程安全的能力表。克隆开销很小；写操作走 `RwLock`。
 #[derive(Default, Clone)]
 pub struct ModelCapabilityTable {
     inner: Arc<RwLock<HashMap<(String, String), ModelCapabilities>>>,
@@ -50,7 +49,7 @@ impl ModelCapabilityTable {
         Self::default()
     }
 
-    /// Pre-populated table with capabilities for the major models we test against.
+    /// 预置了测试所覆盖的主要模型的能力表。
     pub fn with_defaults() -> Self {
         let table = Self::new();
         for (api, model, caps) in defaults() {
@@ -70,7 +69,7 @@ impl ModelCapabilityTable {
         guard.insert(key, caps);
     }
 
-    /// Lookup. Falls back to [`ModelCapabilities::unknown`] when the key isn't present.
+    /// 查询。键不存在时回退到 [`ModelCapabilities::unknown`]。
     ///
     /// 协议名先做别名归一，所以老配置里的 `anthropic_v2` / `openai_compat`
     /// 与新名 `anthropic` / `openai_chat` 都能命中同一行。

@@ -1,4 +1,4 @@
-//! Persistence layer for the CLI config file.
+//! CLI 配置文件的持久化层。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 
 use super::Settings;
 
-/// Resolve `~/.llm-adapt/` (or the override pointed at by `LLM_ADAPT_HOME`).
+/// 解析 `~/.llm-adapt/`（或 `LLM_ADAPT_HOME` 指向的覆盖路径）。
 pub fn config_dir() -> Result<PathBuf> {
     if let Ok(custom) = std::env::var("LLM_ADAPT_HOME") {
         return Ok(PathBuf::from(custom));
@@ -20,7 +20,7 @@ pub fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.toml"))
 }
 
-/// Load the config, returning [`Settings::default`] if the file does not exist.
+/// 加载配置；文件不存在时返回 [`Settings::default`]。
 pub fn load() -> Result<Settings> {
     let path = config_path()?;
     if !path.exists() {
@@ -33,7 +33,7 @@ pub fn load() -> Result<Settings> {
     Ok(parsed)
 }
 
-/// Persist the settings, creating the parent directory if necessary.
+/// 持久化设置，必要时创建父目录。
 pub fn save(settings: &Settings) -> Result<PathBuf> {
     let path = config_path()?;
     if let Some(parent) = path.parent() {
@@ -45,8 +45,7 @@ pub fn save(settings: &Settings) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Import settings from a TOML file. The imported file completely replaces
-/// the current config.
+/// 从 TOML 文件导入设置。导入的文件会完全替换当前配置。
 pub fn import_from(file: &Path) -> Result<Settings> {
     let text = fs::read_to_string(file)
         .with_context(|| format!("read {}", file.display()))?;
@@ -56,7 +55,7 @@ pub fn import_from(file: &Path) -> Result<Settings> {
     Ok(parsed)
 }
 
-/// Export the current settings into the given file.
+/// 把当前设置导出到指定文件。
 pub fn export_to(file: &Path, settings: &Settings) -> Result<()> {
     let text = toml::to_string_pretty(settings).context("serialize settings")?;
     if let Some(parent) = file.parent() {

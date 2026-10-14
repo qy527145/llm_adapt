@@ -1,5 +1,5 @@
-//! `llm-adapt preview` — render a unified request into its provider-specific
-//! HTTP shape without sending it.
+//! `llm-adapt preview` —— 把统一请求渲染成各家 provider 专属的
+//! HTTP 形态，但不发送。
 
 use anyhow::{Context, Result};
 use clap::Args;
@@ -15,35 +15,35 @@ use crate::output::{emit_json, OutputFormat};
 
 #[derive(Debug, Args)]
 pub struct PreviewArgs {
-    /// Profile to use; defaults to the active one.
+    /// 使用的 profile；默认用 active 的那个。
     #[arg(long)]
     pub profile: Option<String>,
-    /// Override the model name (otherwise uses profile default).
+    /// 覆盖模型名（否则用 profile 的默认值）。
     #[arg(long, short)]
     pub model: Option<String>,
-    /// Override the api_format (handler key).
+    /// 覆盖 api_format（handler key）。
     #[arg(long)]
     pub api_format: Option<String>,
-    /// User prompt content.
+    /// 用户 prompt 内容。
     #[arg(long, short)]
     pub prompt: String,
-    /// Optional system message.
+    /// 可选的 system 消息。
     #[arg(long)]
     pub system: Option<String>,
-    /// Attach a CacheMarker to the system prompt (`5m` or `1h`).
-    /// Only honoured by handlers that support explicit caching (Anthropic).
+    /// 给 system prompt 挂一个 CacheMarker（`5m` 或 `1h`）。
+    /// 仅对支持显式缓存的 handler（Anthropic）生效。
     #[arg(long, value_parser = ["5m", "1h"])]
     pub cache_system: Option<String>,
-    /// Temperature.
+    /// 温度。
     #[arg(long)]
     pub temperature: Option<f32>,
-    /// Max output tokens (required for Anthropic).
+    /// 最大输出 token 数（Anthropic 必填）。
     #[arg(long)]
     pub max_tokens: Option<u32>,
-    /// Pretend the request is a streaming one.
+    /// 假装这是一个流式请求。
     #[arg(long, default_value_t = false)]
     pub stream: bool,
-    /// Output format: `human` (default), `curl`, or `json`.
+    /// 输出格式：`human`（默认）、`curl` 或 `json`。
     #[arg(long, default_value = "human")]
     pub format: String,
 }
@@ -182,7 +182,7 @@ fn to_curl(http: &HttpRequest) -> String {
 }
 
 fn shell_quote(s: &str) -> String {
-    // Single quotes are safe for everything except a literal single quote.
+    // 单引号对一切都安全，唯独字面单引号本身例外。
     if s.contains('\'') {
         let escaped = s.replace('\'', "'\\''");
         format!("'{escaped}'")

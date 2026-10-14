@@ -1,10 +1,9 @@
-//! Role-aware conversation model.
+//! 角色感知的对话模型。
 //!
-//! `Conversation` is the canonical history representation passed to the model:
-//! an optional system prompt followed by an alternating sequence of user and
-//! assistant turns. The block-level types prevent illegal compositions at the
-//! type system level (e.g. `Thinking` cannot appear in a user message,
-//! `ToolResult` cannot appear in an assistant message).
+//! `Conversation` 是交给模型的标准历史表示：可选的 system prompt，后面跟着
+//! 交替出现的 user 与 assistant 轮次。块级类型在类型系统层面就杜绝了非法组合
+//! （如 `Thinking` 不能出现在 user 消息里，`ToolResult` 不能出现在 assistant
+//! 消息里）。
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +11,7 @@ use super::cache::CacheMarker;
 use super::tool_result::ToolResultContent;
 
 // ---------------------------------------------------------------------------
-// Top-level conversation
+// 顶层对话
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -24,7 +23,7 @@ pub struct Conversation {
 }
 
 impl Conversation {
-    /// One-shot conversation with a single user text turn and no system prompt.
+    /// 一次性对话：只有一条 user 文本轮次，没有 system prompt。
     pub fn single_user(text: impl Into<String>) -> Self {
         Self {
             system: None,
@@ -32,7 +31,7 @@ impl Conversation {
         }
     }
 
-    /// One-shot conversation with a system prompt and a single user text turn.
+    /// 一次性对话：带 system prompt，外加一条 user 文本轮次。
     pub fn with_system(system: impl Into<String>, user: impl Into<String>) -> Self {
         Self {
             system: Some(SystemPrompt::text(system)),
@@ -40,14 +39,14 @@ impl Conversation {
         }
     }
 
-    /// Append a turn. Returns `&mut self` for chaining.
+    /// 追加一轮。返回 `&mut self` 以便链式调用。
     pub fn push(&mut self, turn: Turn) -> &mut Self {
         self.turns.push(turn);
         self
     }
 }
 
-/// One turn in the conversation.
+/// 对话中的一轮。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "snake_case")]
 pub enum Turn {
@@ -71,7 +70,7 @@ impl SystemPrompt {
         }
     }
 
-    /// Returns the concatenated plain-text content of all `Text` blocks.
+    /// 返回所有 `Text` 块拼接后的纯文本内容。
     pub fn text_content(&self) -> String {
         self.blocks
             .iter()
@@ -103,7 +102,7 @@ pub enum SystemBlock {
 }
 
 // ---------------------------------------------------------------------------
-// User message
+// 用户消息
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -118,7 +117,7 @@ impl UserMessage {
         }
     }
 
-    /// Add a tool result and return self for chaining.
+    /// 添加一个工具结果并返回 self 以便链式调用。
     pub fn with_tool_result(
         mut self,
         call_id: impl Into<String>,
@@ -165,7 +164,7 @@ pub enum UserBlock {
 }
 
 // ---------------------------------------------------------------------------
-// Assistant message
+// 助手消息
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -180,7 +179,7 @@ impl AssistantMessage {
         }
     }
 
-    /// Concatenate all `Text` blocks; non-text blocks are skipped.
+    /// 拼接所有 `Text` 块；非文本块会被跳过。
     pub fn text_content(&self) -> String {
         self.blocks
             .iter()
@@ -192,7 +191,7 @@ impl AssistantMessage {
             .join("")
     }
 
-    /// All tool calls in this message, in order.
+    /// 本条消息里的所有工具调用，按顺序。
     pub fn tool_calls(&self) -> impl Iterator<Item = (&str, &str, &str)> {
         self.blocks.iter().filter_map(|b| match b {
             AssistantBlock::ToolCall { id, name, arguments, .. } => {
@@ -202,7 +201,7 @@ impl AssistantMessage {
         })
     }
 
-    /// Concatenated `Thinking` content, if any.
+    /// `Thinking` 内容拼接起来的结果（如果有）。
     pub fn thinking_content(&self) -> String {
         self.blocks
             .iter()
@@ -228,19 +227,17 @@ pub enum AssistantBlock {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cache: Option<CacheMarker>,
     },
-    /// Reasoning content. `signature` is required by Anthropic when echoing
-    /// the message back in a multi-turn conversation that involves tools.
+    /// 推理内容。多轮带工具的对话里回灌消息时，Anthropic 要求带上 `signature`。
     Thinking {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
-    /// A tool invocation requested by the model.
+    /// 模型请求的一次工具调用。
     ///
-    /// `arguments` is the **raw** JSON-encoded string emitted by the vendor.
-    /// Streaming deltas arrive as suffixes that concatenate to this final form;
-    /// storing the parsed `Value` would lose that property. Use
-    /// [`AssistantBlock::parsed_arguments`] to materialise a `serde_json::Value`.
+    /// `arguments` 是厂商送出的**原始** JSON 字符串。流式增量以分片后缀的形式
+    /// 到来、拼起来才是这个最终形态；存成解析后的 `Value` 会丢掉这一性质。
+    /// 需要 `serde_json::Value` 时用 [`AssistantBlock::parsed_arguments`]。
     ToolCall {
         id: String,
         name: String,
@@ -251,9 +248,8 @@ pub enum AssistantBlock {
 }
 
 impl AssistantBlock {
-    /// `Some(Ok(v))` for a tool call with valid JSON arguments,
-    /// `Some(Err(_))` if the arguments string is malformed JSON,
-    /// `None` for non-tool blocks.
+    /// 工具调用且 JSON 合法时返回 `Some(Ok(v))`，参数字符串 JSON 非法时返回
+    /// `Some(Err(_))`，非工具块返回 `None`。
     pub fn parsed_arguments(&self) -> Option<Result<serde_json::Value, serde_json::Error>> {
         match self {
             AssistantBlock::ToolCall { arguments, .. } => Some(serde_json::from_str(arguments)),

@@ -1,6 +1,6 @@
 //! `cargo run -p llm_adapt_core --example basic_anthropic`
 //!
-//! Requires `ANTHROPIC_API_KEY` in the environment.
+//! 环境变量里需设置 `ANTHROPIC_API_KEY`。
 
 use llm_adapt_core::{
     CacheMarker, ChatRequest, ClientConfig, Conversation, LLMClient, SystemPrompt, Turn,
@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("set ANTHROPIC_API_KEY");
     let client = LLMClient::new(ClientConfig::new("https://api.anthropic.com", api_key))?;
 
-    // Mark the system prompt for caching to demonstrate the per-block marker.
+    // 给 system prompt 打上缓存标记，演示逐块标记的用法。
     let conv = Conversation {
         system: Some(SystemPrompt::text("You are concise.").with_cache(CacheMarker::ephemeral_5m())),
         turns: vec![Turn::User(UserMessage::text(

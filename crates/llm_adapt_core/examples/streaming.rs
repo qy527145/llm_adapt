@@ -1,7 +1,6 @@
 //! `cargo run -p llm_adapt_core --example streaming`
 //!
-//! Demonstrates the unified streaming API against either OpenAI or Anthropic
-//! depending on which env var is set.
+//! 演示统一流式 API：按设置的环境变量，打到 OpenAI 或 Anthropic。
 
 use std::io::Write;
 

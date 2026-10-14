@@ -1,19 +1,18 @@
-//! Exponential-backoff retry policy used by [`crate::http::HttpExecutor`].
+//! [`crate::http::HttpExecutor`] 使用的指数退避重试策略。
 
 use std::time::Duration;
 
 use crate::error::LLMError;
 
-/// Retry policy. The executor decides whether to retry based on
-/// [`should_retry`](Self::should_retry); the actual delay between attempts is
-/// computed by [`delay`](Self::delay).
+/// 重试策略。执行器依据 [`should_retry`](Self::should_retry) 决定是否重试；
+/// 每次尝试之间的实际延迟由 [`delay`](Self::delay) 计算。
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
-    /// Maximum number of retries (the initial attempt is *not* counted).
+    /// 最大重试次数（首次尝试*不计*在内）。
     pub max_retries: u32,
-    /// Initial backoff after the first failure.
+    /// 首次失败后的初始退避时长。
     pub initial_backoff: Duration,
-    /// Cap on the per-attempt backoff.
+    /// 单次退避的上限。
     pub max_backoff: Duration,
 }
 
@@ -28,7 +27,7 @@ impl Default for RetryPolicy {
 }
 
 impl RetryPolicy {
-    /// No retries — useful in tests where we want deterministic single-attempt behaviour.
+    /// 不重试 —— 测试里想要确定的「只尝试一次」行为时有用。
     pub fn none() -> Self {
         Self { max_retries: 0, ..Self::default() }
     }
@@ -37,8 +36,7 @@ impl RetryPolicy {
         attempt < self.max_retries && err.is_retryable()
     }
 
-    /// Exponential backoff with a hard cap, no jitter (callers can layer jitter
-    /// on top if they need it).
+    /// 带硬上限的指数退避，不加抖动（调用方需要的话可以自己叠一层抖动）。
     pub fn delay(&self, attempt: u32) -> Duration {
         let exp = attempt.saturating_sub(1);
         let mult = 1u64 << exp.min(20);

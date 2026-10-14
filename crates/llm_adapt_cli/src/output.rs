@@ -1,7 +1,7 @@
-//! Output helpers shared by every CLI command.
+//! 各 CLI 命令共用的输出辅助。
 //!
-//! All commands accept a `--json` flag; when set, callers go through
-//! [`emit_json`]. The non-JSON path stays plain-text and friendly to humans.
+//! 所有命令都接受 `--json` 旗标；置位时调用方走 [`emit_json`]。
+//! 非 JSON 路径保持纯文本、对人类友好。
 
 use anyhow::Result;
 use serde::Serialize;
@@ -24,7 +24,7 @@ pub fn emit_json<T: Serialize>(value: &T) -> Result<()> {
     Ok(())
 }
 
-/// Render a slice of `(label, value)` pairs as aligned `key: value` lines.
+/// 把一组 `(label, value)` 渲染成对齐的 `key: value` 行。
 pub fn print_kv(rows: &[(&str, String)]) {
     let width = rows.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
     for (k, v) in rows {

@@ -1,7 +1,7 @@
-//! `llm-adapt` — unified CLI / TUI / Web entry point for `llm_adapt`.
+//! `llm-adapt` —— `llm_adapt` 的统一 CLI / TUI / Web 入口。
 //!
-//! Phase 1 ships CLI subcommands (`config`, `preview`, `call`, `handlers`);
-//! `tui` and `web` are stubs whose implementations land in phase 2.
+//! 第一阶段先落地 CLI 子命令（`config`、`preview`、`call`、`handlers`）；
+//! `tui` 与 `web` 是占位，实现留到第二阶段。
 
 mod commands;
 mod config;
@@ -20,11 +20,11 @@ use crate::output::OutputFormat;
     version,
 )]
 struct Cli {
-    /// Emit machine-readable JSON on stdout instead of human prose.
+    /// 在 stdout 上输出机器可读的 JSON，而非人类可读的散文。
     #[arg(long, global = true, default_value_t = false)]
     json: bool,
 
-    /// Increase log verbosity (-v, -vv).
+    /// 提高日志详细度（-v、-vv）。
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
 
@@ -34,23 +34,23 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Manage profiles (~/.llm-adapt/config.toml).
+    /// 管理 profile（~/.llm-adapt/config.toml）。
     Config {
         #[command(subcommand)]
         cmd: config_cmd::ConfigCmd,
     },
-    /// Render a request without sending it. Useful for vetting the wire format.
+    /// 只渲染请求而不发送，便于核对 wire 格式。
     Preview(preview::PreviewArgs),
-    /// Send a request and print the response (streaming or one-shot).
+    /// 发送请求并打印响应（流式或一次性）。
     Call(call::CallArgs),
-    /// Inspect registered protocol handlers and model capabilities.
+    /// 查看已注册的协议 handler 与模型能力。
     Handlers {
         #[command(subcommand)]
         cmd: handlers::HandlersCmd,
     },
-    /// (next phase) Launch the interactive TUI.
+    /// （下一阶段）启动交互式 TUI。
     Tui,
-    /// (next phase) Launch the Web management panel.
+    /// （下一阶段）启动 Web 管理面板。
     Web(web::WebArgs),
 }
 

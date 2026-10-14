@@ -1,4 +1,4 @@
-//! Placeholder for the next-phase TUI implementation.
+//! 下一阶段 TUI 实现的占位。
 
 use anyhow::Result;
 

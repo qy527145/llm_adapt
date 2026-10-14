@@ -1,4 +1,4 @@
-//! Unified non-streaming response.
+//! 统一的非流式响应。
 
 use std::collections::HashMap;
 
@@ -11,26 +11,26 @@ use super::usage::{RateLimitInfo, Usage};
 // 注意它现在带 `Other { value }`，不再有损。
 pub use crate::protocol::ir::FinishReason;
 
-/// Unified non-streaming response.
+/// 统一的非流式响应。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
-    /// The assistant's full reply, as a role-aware message.
+    /// 助手的完整回复，表示为角色感知的消息。
     pub message: AssistantMessage,
     pub finish_reason: FinishReason,
     pub usage: Usage,
     pub request_id: Option<String>,
-    /// Provider-resolved model name (may differ from the request when aliases are used).
+    /// 提供商解析出的模型名（使用别名时可能与请求里的不同）。
     pub actual_model: Option<String>,
     pub latency_ms: u128,
     #[serde(default)]
     pub rate_limit_info: RateLimitInfo,
-    /// Free-form provider metadata (e.g. `system_fingerprint`).
+    /// 提供商的自定义元数据（如 `system_fingerprint`）。
     #[serde(default)]
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
 impl ChatResponse {
-    /// Convenience: concatenated text content of the assistant message.
+    /// 便捷方法：助手消息的文本内容拼接结果。
     pub fn text(&self) -> String {
         self.message.text_content()
     }

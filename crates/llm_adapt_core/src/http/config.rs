@@ -1,43 +1,42 @@
-//! HTTP-layer configuration shared across all handlers.
+//! 各 handler 共用的 HTTP 层配置。
 
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Proxy configuration. Both HTTP(S) and SOCKS5 proxies are accepted; the
-/// scheme in `url` (e.g. `socks5://...`) determines which is used.
+/// 代理配置。HTTP(S) 与 SOCKS5 代理都支持；
+/// 用哪个由 `url` 里的 scheme（如 `socks5://...`）决定。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub url: String,
 }
 
-/// Top-level HTTP/client configuration. Handlers receive a borrowed
-/// `&ClientConfig` when building requests so they can pick up `base_url`,
-/// `api_key`, and global headers.
+/// 顶层 HTTP/客户端配置。handler 在构造请求时拿到借用的 `&ClientConfig`，
+/// 从中取 `base_url`、`api_key` 与全局 headers。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
-    /// Base URL for the provider (e.g. `https://api.openai.com`). Handlers
-    /// append their own path (e.g. `/v1/chat/completions`).
+    /// 提供商的基础 URL（如 `https://api.openai.com`）。handler 自行拼接
+    /// 各自的路径（如 `/v1/chat/completions`）。
     pub base_url: String,
-    /// API key / bearer token. Some handlers may also pull this from
-    /// `default_headers` if the auth scheme is non-standard.
+    /// API key / bearer token。若认证方式非标准，某些 handler 也可能
+    /// 从 `default_headers` 里取。
     pub api_key: String,
-    /// Optional proxy.
+    /// 可选代理。
     #[serde(default)]
     pub proxy: Option<ProxyConfig>,
-    /// Connect-phase timeout.
+    /// 建立连接阶段的超时。
     #[serde(default = "default_connect_timeout", with = "humantime_serde_compat")]
     pub connect_timeout: Duration,
-    /// Total request timeout (non-streaming).
+    /// 请求总超时（非流式）。
     #[serde(default = "default_request_timeout", with = "humantime_serde_compat")]
     pub request_timeout: Duration,
-    /// Inactivity timeout while a stream is open.
+    /// 流打开期间的空闲超时。
     #[serde(default = "default_stream_timeout", with = "humantime_serde_compat")]
     pub stream_timeout: Duration,
-    /// Whether to verify TLS server certificates. Default true.
+    /// 是否校验 TLS 服务端证书。默认 true。
     #[serde(default = "default_true")]
     pub verify_ssl: bool,
-    /// Headers attached to every request before handler-specific headers.
+    /// 附加到每个请求上的 headers，排在 handler 专属 headers 之前。
     #[serde(default)]
     pub default_headers: Vec<(String, String)>,
 }
@@ -58,7 +57,7 @@ impl Default for ClientConfig {
 }
 
 impl ClientConfig {
-    /// Convenience builder for tests and quick examples.
+    /// 给测试与快速示例用的便捷构造。
     pub fn new(base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into(),
@@ -73,10 +72,9 @@ fn default_request_timeout() -> Duration { Duration::from_secs(60) }
 fn default_stream_timeout() -> Duration { Duration::from_secs(60) }
 fn default_true() -> bool { true }
 
-/// Minimal `Duration` ⇄ seconds (u64) serde helper.
+/// 极简的 `Duration` ⇄ 秒（u64）serde 辅助。
 ///
-/// We don't pull in `humantime_serde` to keep dependencies lean; the config
-/// stores plain integer seconds.
+/// 不引入 `humantime_serde` 以保持依赖精简；配置里存的就是纯整数秒。
 mod humantime_serde_compat {
     use std::time::Duration;
 

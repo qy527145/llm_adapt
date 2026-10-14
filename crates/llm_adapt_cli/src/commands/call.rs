@@ -1,4 +1,4 @@
-//! `llm-adapt call` — actually send a request and print the response.
+//! `llm-adapt call` —— 真正发送请求并打印响应。
 
 use anyhow::{Context, Result};
 use clap::Args;
@@ -25,15 +25,15 @@ pub struct CallArgs {
     pub prompt: String,
     #[arg(long)]
     pub system: Option<String>,
-    /// Attach a CacheMarker to the system prompt (`5m` or `1h`).
-    /// Only honoured by handlers that support explicit caching (Anthropic).
+    /// 给 system prompt 挂一个 CacheMarker（`5m` 或 `1h`）。
+    /// 仅对支持显式缓存的 handler（Anthropic）生效。
     #[arg(long, value_parser = ["5m", "1h"])]
     pub cache_system: Option<String>,
     #[arg(long)]
     pub temperature: Option<f32>,
     #[arg(long)]
     pub max_tokens: Option<u32>,
-    /// Use the streaming endpoint.
+    /// 使用流式端点。
     #[arg(long, default_value_t = false)]
     pub stream: bool,
 }

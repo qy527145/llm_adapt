@@ -1,4 +1,4 @@
-//! Subcommand dispatch surface.
+//! 子命令分发面。
 
 pub mod call;
 pub mod config_cmd;

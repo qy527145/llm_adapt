@@ -11,32 +11,32 @@ use crate::output::{emit_json, print_kv, OutputFormat};
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCmd {
-    /// List all profiles. API keys are masked.
+    /// 列出所有 profile。API key 会打码。
     List,
-    /// Show a single profile (or the active one if `--name` is omitted).
+    /// 显示单个 profile（省略 `--name` 时显示 active 的那个）。
     Show {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Set the active profile.
+    /// 设置 active profile。
     Use { name: String },
-    /// Create or update a single field. The field must be one of:
-    /// `base_url`, `api_key`, `api_format`, `default_model`, `proxy`, `verify_ssl`.
+    /// 创建或更新单个字段。字段必须是以下之一：
+    /// `base_url`、`api_key`、`api_format`、`default_model`、`proxy`、`verify_ssl`。
     Set {
         profile: String,
         key: String,
         value: String,
     },
-    /// Remove a profile.
+    /// 删除一个 profile。
     Remove { name: String },
-    /// Replace the whole config file with the contents of the given TOML file.
+    /// 用指定 TOML 文件的内容替换整个配置文件。
     Import { file: PathBuf },
-    /// Dump the whole config to a file (or stdout when omitted).
+    /// 把整个配置转储到文件（省略时输出到 stdout）。
     Export {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Print the path where the config file lives.
+    /// 打印配置文件所在路径。
     Path,
 }
 
@@ -242,7 +242,7 @@ fn export(out: Option<PathBuf>, _fmt: OutputFormat) -> Result<()> {
     Ok(())
 }
 
-/// Find a profile by explicit name, otherwise the active one.
+/// 按显式名称查找 profile，否则用 active 的那个。
 pub fn pick_profile<'a>(
     settings: &'a Settings,
     name: Option<&'a str>,

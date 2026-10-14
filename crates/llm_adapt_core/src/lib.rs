@@ -1,10 +1,10 @@
 //! # llm_adapt_core
 //!
-//! Production-grade Rust abstraction over LLM provider APIs. Application code
-//! talks to one unified, role-aware type system; per-protocol [`protocol::Codec`]
-//! implementations translate to and from each vendor wire format.
+//! 面向 LLM 提供商 API 的生产级 Rust 抽象。应用代码只跟一套统一的、
+//! 角色感知的类型系统打交道；每个协议各自的 [`protocol::Codec`] 实现
+//! 负责与各家 wire 格式互转。
 //!
-//! ## Quick start
+//! ## 快速上手
 //!
 //! ```no_run
 //! use llm_adapt_core::{ChatRequest, ClientConfig, Conversation, LLMClient};
@@ -17,7 +17,7 @@
 //! # Ok(()) }
 //! ```
 //!
-//! ## Architecture
+//! ## 架构
 //!
 //! 分层严格单向：`http`（怎么发出去）→ `protocol`（发什么、回的什么）→
 //! `types`（给人用的角色感知 API）。`client` 把三层串起来。

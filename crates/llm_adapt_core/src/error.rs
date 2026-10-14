@@ -1,25 +1,24 @@
-//! Unified error type for all `llm_adapt` operations.
+//! 所有 `llm_adapt` 操作统一的错误类型。
 //!
-//! Every fallible API in the core crate returns [`LLMError`]. Errors are classified
-//! into stable variants so callers can match on category, while carrying optional
-//! metadata (request id, HTTP status, retryability hint) for richer diagnostics.
+//! 核心 crate 里每个可能失败的 API 都返回 [`LLMError`]。错误按稳定的变体分类，
+//! 便于调用方按类别 match，同时携带可选元数据（请求 id、HTTP 状态、可重试提示）
+//! 以便给出更丰富的诊断。
 
 use std::fmt;
 
 use thiserror::Error;
 
-/// Extra context attached to most error variants. All fields are optional so that
-/// errors can be constructed at any layer regardless of how much information is
-/// available.
+/// 附加在多数错误变体上的额外上下文。所有字段都是可选的，
+/// 这样无论掌握多少信息，任意一层都能构造错误。
 #[derive(Debug, Default, Clone)]
 pub struct ErrorContext {
-    /// Provider-supplied request id, if the response carried one.
+    /// 上游提供的请求 id（如果响应里带了的话）。
     pub request_id: Option<String>,
-    /// HTTP status code that triggered the error, if applicable.
+    /// 触发该错误的 HTTP 状态码（如果适用）。
     pub http_status: Option<u16>,
-    /// Whether the operation is safe to retry with the same payload.
+    /// 用同样的 payload 重试是否安全。
     pub retryable: bool,
-    /// Vendor-specific error code (string form to keep it format-agnostic).
+    /// 厂商专属错误码（用字符串形式以保持格式无关）。
     pub vendor_code: Option<String>,
 }
 
@@ -44,31 +43,31 @@ impl ErrorContext {
     }
 }
 
-/// All errors surfaced by `llm_adapt_core`.
+/// `llm_adapt_core` 抛出的所有错误。
 #[derive(Debug, Error)]
 pub enum LLMError {
-    /// Misconfiguration detected before any request is built (missing key, bad URL, etc.).
+    /// 在构造任何请求之前发现的配置错误（缺 key、URL 非法等）。
     #[error("configuration error: {message}")]
     Config { message: String },
 
-    /// The supplied [`crate::types::ChatRequest`] did not satisfy validation rules.
+    /// 传入的 [`crate::types::ChatRequest`] 不满足校验规则。
     #[error("validation error: {message}")]
     Validation { message: String },
 
-    /// Network/transport level failure (DNS, TLS, broken pipe, ...).
+    /// 网络/传输层失败（DNS、TLS、broken pipe……）。
     #[error("network error: {message}")]
     Network { message: String, ctx: ErrorContext },
 
-    /// Request exceeded the configured timeout.
+    /// 请求超过了配置的超时时间。
     #[error("request timed out after {elapsed_ms} ms")]
     Timeout { elapsed_ms: u128, ctx: ErrorContext },
 
-    /// Authentication/authorisation failure (HTTP 401/403).
+    /// 认证/授权失败（HTTP 401/403）。
     #[error("authentication error: {message}")]
     Auth { message: String, ctx: ErrorContext },
 
-    /// Rate limit hit (HTTP 429). `retry_after_ms` mirrors the `Retry-After` header
-    /// when the provider sent one.
+    /// 触发限流（HTTP 429）。上游发了 `Retry-After` 头时，
+    /// `retry_after_ms` 与之对应。
     #[error("rate limited: {message}")]
     RateLimit {
         message: String,
@@ -76,23 +75,23 @@ pub enum LLMError {
         ctx: ErrorContext,
     },
 
-    /// Provider rejected the request on safety grounds.
+    /// 上游以安全为由拒绝了请求。
     #[error("safety violation: {message}")]
     Safety { message: String, ctx: ErrorContext },
 
-    /// Context window was exceeded.
+    /// 超出了上下文窗口。
     #[error("context overflow: {message}")]
     ContextOverflow { message: String, ctx: ErrorContext },
 
-    /// A response body could not be parsed into a stable structure.
+    /// 响应体无法解析成稳定的结构。
     #[error("parse error: {message}")]
     Parse { message: String, ctx: ErrorContext },
 
-    /// Provider returned a non-success response that does not fit any other category.
+    /// 上游返回了非成功响应，且不归入其它任何类别。
     #[error("provider error: {message}")]
     Provider { message: String, ctx: ErrorContext },
 
-    /// No handler was registered for the requested `api_format`.
+    /// 请求的 `api_format` 没有注册对应的 handler。
     #[error("no handler registered for api_format = {api_format}")]
     HandlerNotFound { api_format: String },
 
@@ -103,7 +102,7 @@ pub enum LLMError {
 }
 
 impl LLMError {
-    /// Returns the embedded [`ErrorContext`], if any.
+    /// 返回内嵌的 [`ErrorContext`]（如果有）。
     pub fn context(&self) -> Option<&ErrorContext> {
         match self {
             LLMError::Network { ctx, .. }
@@ -118,7 +117,7 @@ impl LLMError {
         }
     }
 
-    /// Convenience: whether this error is safe to retry as-is.
+    /// 便捷方法：这个错误能否原样重试。
     pub fn is_retryable(&self) -> bool {
         self.context().map(|c| c.retryable).unwrap_or(false)
     }
