@@ -9,4 +9,11 @@ use super::{HttpRequest, RawHttpResponse};
 pub trait RequestHook: Send + Sync {
     fn before_request(&self, _request: &HttpRequest) {}
     fn after_raw_response(&self, _response: &RawHttpResponse) {}
+
+    /// 流式响应每收到一块原始字节就调一次。
+    ///
+    /// `after_raw_response` 只覆盖非流式 —— 流式的响应体是逐块吐出来的，
+    /// 等拼完再回调就等于把整段响应缓冲在内存里，而那可能很长。
+    /// 要注意这是**网络块**不是 SSE 帧：帧的边界不保证与块的边界对齐。
+    fn on_stream_chunk(&self, _chunk: &bytes::Bytes) {}
 }

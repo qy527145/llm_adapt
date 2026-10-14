@@ -41,6 +41,7 @@ pub mod client;
 pub mod error;
 pub mod http;
 pub mod protocol;
+pub mod server_tools;
 pub mod sse;
 pub mod types;
 
@@ -56,6 +57,7 @@ pub use protocol::ir::{
     ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind, ToolResultBlock, ToolResultContent,
     ToolSpec, Usage, UsageSource, WireMessage, WireRequest, WireResponse,
 };
+pub use server_tools::{resolve_specs, spec_from_raw, ServerTool};
 pub use protocol::{Codec, Protocol, ProtocolId, ProtocolRegistry, StreamEncoder, decode_stream};
 pub use sse::{ChunkStream, SseChunkStream, SseFrame, SseMapper, SseOutcome};
 pub use types::{

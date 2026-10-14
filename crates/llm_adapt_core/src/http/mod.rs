@@ -51,6 +51,12 @@ pub struct HttpRequest {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// 调用方自用的关联标签：原样带给 hook，传输层**不解释**它。
+    ///
+    /// 存在的理由只有一个 —— 抓包时要把「这次 HTTP 请求」与「哪条对话的哪一轮」对上号。
+    /// 会话、轮次这些概念属于上层，传输层不该认识，所以这里只把它当成一块不透明的负载。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation: Option<serde_json::Value>,
 }
 
 impl HttpRequest {
@@ -198,8 +204,22 @@ impl HttpExecutor {
             );
         }
         let meta = StreamMeta { status, headers };
+        // 把网络字节同时喂给钩子。`execute`（非流式）走的是 after_raw_response，
+        // 流式这边没有对应的时机 —— 响应体是逐块来的，等拼完再回调就等于把整段
+        // 响应缓冲在内存里。
+        let hooks = self.hooks.clone();
         let stream = resp.bytes_stream().map_err(LLMError::from).boxed();
-        Ok((meta, stream))
+        Ok((
+            meta,
+            Box::pin(stream.map(move |chunk| {
+                if let Ok(bytes) = &chunk {
+                    for h in &hooks {
+                        h.on_stream_chunk(bytes);
+                    }
+                }
+                chunk
+            })) as ByteStream,
+        ))
     }
 
     async fn send_once(&self, req: &HttpRequest) -> Result<RawHttpResponse, LLMError> {

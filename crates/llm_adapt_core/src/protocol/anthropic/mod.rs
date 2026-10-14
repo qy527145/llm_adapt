@@ -55,6 +55,7 @@ impl Codec for AnthropicCodec {
             url: crate::protocol::codec::endpoint_url(config, Protocol::Anthropic.default_path()),
             headers,
             body: serde_json::to_vec(&body)?,
+            correlation: None,
         })
     }
 

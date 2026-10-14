@@ -101,7 +101,10 @@ impl LLMClient {
         let codec = self.codec(protocol)?;
         let mut effective = request.clone();
         effective.stream = false;
-        let http_req = codec.encode_request(&effective, self.executor.config())?;
+        let http_req = tag(
+            codec.encode_request(&effective, self.executor.config())?,
+            &effective.meta,
+        );
         let raw = self.executor.execute(&http_req).await?;
         // 先把兜底 id 取出来，body 随后会被移动进解码器。
         let fallback_id = request_id_from_headers(&raw);
@@ -121,7 +124,10 @@ impl LLMClient {
         let codec = self.codec(protocol)?;
         let mut effective = request.clone();
         effective.stream = true;
-        let http_req = codec.encode_request(&effective, self.executor.config())?;
+        let http_req = tag(
+            codec.encode_request(&effective, self.executor.config())?,
+            &effective.meta,
+        );
         let (_meta, bytes) = self.executor.execute_stream(&http_req).await?;
         Ok(decode_stream(&*codec, bytes))
     }
@@ -157,6 +163,15 @@ impl LLMClient {
         let protocol = ProtocolId::new(&request.api_format);
         self.chat_stream_ir(&protocol, &lift_request(request)).await
     }
+}
+
+
+/// 把请求的归属信息挂到 HTTP 请求上，供抓包钩子关联回对话。
+fn tag(req: HttpRequest, meta: &crate::protocol::ir::RequestMeta) -> HttpRequest {
+    let mut req = req;
+    // 序列化失败（几乎不可能）也只是丢掉标签，不该让请求失败。
+    req.correlation = serde_json::to_value(meta).ok();
+    req
 }
 
 /// 从响应头里找上游的请求 id。各家头名不同，逐个认。

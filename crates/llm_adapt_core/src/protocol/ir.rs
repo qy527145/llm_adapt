@@ -602,6 +602,43 @@ pub struct WireRequest {
     /// 协议原生但未建模的顶层字段，原样透传。
     #[serde(default, flatten)]
     pub extra: IndexMap<String, serde_json::Value>,
+    /// 只用于把这次请求关联回「哪条对话的哪一轮」，**不上 wire**。
+    ///
+    /// 它是运行时标签而不是请求内容，所以 `serde(skip)` —— 进了序列化就会被
+    /// 当成未建模字段透传给上游，那才是真的错。
+    #[serde(skip)]
+    pub meta: RequestMeta,
+}
+
+/// 请求的归属信息。抓包时靠它把「这次 HTTP 请求」对回对话里的某一段。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RequestMeta {
+    /// 会话 id。没有会话（一次性调用）时为 None。
+    pub session_id: Option<String>,
+    /// 第几轮。
+    pub turn: u32,
+    /// 同一轮内的第几次模型调用 —— 工具回灌后一轮会有多次。
+    pub round: u32,
+    /// 这次调用是干什么的。
+    pub purpose: RequestPurpose,
+}
+
+/// 一次模型调用的用途。
+///
+/// 不能只靠轮次区分：压缩、生成标题、子 agent 都会发请求，它们与主对话的
+/// 请求混在一起时，排障的人分不清「这条报文为什么长这样」。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestPurpose {
+    /// 主对话推进。
+    #[default]
+    MainTurn,
+    /// 上下文压缩的摘要调用。
+    Compaction,
+    /// 会话标题生成。
+    Title,
+    /// 子 agent 的调用。
+    Subagent,
 }
 
 impl WireRequest {
@@ -622,6 +659,7 @@ impl WireRequest {
             thinking: None,
             user_id: None,
             extra: IndexMap::new(),
+            meta: RequestMeta::default(),
         }
     }
 

@@ -56,6 +56,7 @@ impl Codec for OpenAiChatCodec {
             url: crate::protocol::codec::endpoint_url(config, Protocol::OpenAiChat.default_path()),
             headers,
             body: serde_json::to_vec(&body)?,
+            correlation: None,
         })
     }
 

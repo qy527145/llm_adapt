@@ -71,6 +71,7 @@ impl Codec for OpenAiResponsesCodec {
             ),
             headers,
             body: serde_json::to_vec(&body)?,
+            correlation: None,
         })
     }
 
