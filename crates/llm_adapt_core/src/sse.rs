@@ -72,7 +72,10 @@ impl SseMapper for Box<dyn SseMapper> {
 ///
 /// `\n\n` 与 `\r\n\r\n` 在同一位置互斥（`\r\n\r\n` 里没有连续两个 `\n`），
 /// 因此按起始位置取靠前的那个即可。
-fn find_boundary(buf: &[u8]) -> Option<(usize, usize)> {
+///
+/// `pub(crate)`：网关方向的流式协议转换器（[`crate::protocol::convert`]）也要按同样
+/// 的规则切帧，切帧逻辑不能各写一份 —— 少一个尾分隔符的容错差异会让两边对不上。
+pub(crate) fn find_boundary(buf: &[u8]) -> Option<(usize, usize)> {
     let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2));
     let crlf = buf
         .windows(4)
@@ -87,7 +90,7 @@ fn find_boundary(buf: &[u8]) -> Option<(usize, usize)> {
 }
 
 /// 解析一个帧的原始字节。`data` 为空表示这是注释行 / 心跳，驱动层会跳过。
-fn parse_frame(raw: &[u8]) -> SseFrame {
+pub(crate) fn parse_frame(raw: &[u8]) -> SseFrame {
     let text = std::str::from_utf8(raw).unwrap_or("");
     let mut event = None;
     let mut data_parts: Vec<&str> = Vec::new();

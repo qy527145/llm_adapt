@@ -20,24 +20,28 @@
 //! 完整往返，调用方需要在请求里带上 `include: ["reasoning.encrypted_content"]`
 //! —— 通过 [`WireRequest::extra`] 传即可，见本文件末尾的测试。
 //!
-//! 出站方向的 `decode_request` / `encode_response` / `new_stream_encoder` 尚未实现
-//! （网关方向），由 trait 默认实现返回 `Unsupported`。
+//! 出站方向的 `decode_request` / `encode_response` / `new_stream_encoder` 在
+//! [`inbound`] 里实现（网关方向）。流式编码必须守住 Codex 的硬契约：工具调用只从
+//! `output_item.done` 的完整 item 里取、reasoning item 必带 `encrypted_content`。
 
 use bytes::Bytes;
 use serde_json::{Map, Value, json};
 
 use crate::error::LLMError;
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
-use crate::protocol::codec::Codec;
+use crate::protocol::codec::{Codec, StreamEncoder};
 use crate::protocol::ir::{
     Block, CacheUsage, FinishReason, ImageSource, Protocol, ProtocolId, ResponseFormat, ToolChoice,
     ToolKind, ToolSpec, Usage, WireMessage, WireRequest, WireResponse,
 };
 use crate::sse::SseMapper;
 
+mod inbound;
 mod stream;
 
+pub use inbound::ResponsesStreamEncoder;
 pub use stream::ResponsesSseMapper;
+
 
 #[derive(Debug, Default, Clone)]
 pub struct OpenAiResponsesCodec;
@@ -81,6 +85,18 @@ impl Codec for OpenAiResponsesCodec {
 
     fn new_stream_decoder(&self) -> Box<dyn SseMapper> {
         Box::new(ResponsesSseMapper::default())
+    }
+
+    fn decode_request(&self, body: &[u8]) -> Result<WireRequest, LLMError> {
+        inbound::decode_request(body)
+    }
+
+    fn encode_response(&self, response: &WireResponse) -> Result<Vec<u8>, LLMError> {
+        inbound::encode_response(response)
+    }
+
+    fn new_stream_encoder(&self) -> Option<Box<dyn StreamEncoder>> {
+        Some(Box::new(ResponsesStreamEncoder::new()))
     }
 }
 

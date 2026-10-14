@@ -7,8 +7,8 @@
 //! 也不返回带签名的思考内容。因此本 codec 会忽略缓存标记，并在丢弃 `Thinking`
 //! 块时告警——不静默。
 //!
-//! 出站方向的 `decode_request` / `encode_response` / `new_stream_encoder` 尚未实现
-//! （网关方向），由 trait 默认实现返回 `Unsupported`。
+//! 入站（网关）方向的 `decode_request` / `encode_response` / `new_stream_encoder`
+//! 在 [`inbound`] 里实现（`role: "tool"` 消息折回 user 消息里的 `tool_result` 块等）。
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -16,13 +16,18 @@ use serde_json::{Value, json};
 
 use crate::error::{ErrorContext, LLMError};
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
-use crate::protocol::codec::Codec;
+use crate::protocol::codec::{Codec, StreamEncoder};
 use crate::protocol::ir::{
     Block, CacheUsage, CacheWriteUsage, FinishReason, Protocol, ProtocolId, ResponseFormat,
     ToolChoice, ToolResultContent, Usage, WireRequest, WireResponse,
 };
 use crate::sse::{SseFrame, SseMapper, SseOutcome};
 use crate::types::StreamChunk;
+
+mod inbound;
+
+pub use inbound::ChatStreamEncoder;
+
 
 #[derive(Debug, Default, Clone)]
 pub struct OpenAiChatCodec;
@@ -67,6 +72,18 @@ impl Codec for OpenAiChatCodec {
     fn new_stream_decoder(&self) -> Box<dyn SseMapper> {
         Box::new(OpenAiSseMapper::default())
     }
+
+    fn decode_request(&self, body: &[u8]) -> Result<WireRequest, LLMError> {
+        inbound::decode_request(body)
+    }
+
+    fn encode_response(&self, response: &WireResponse) -> Result<Vec<u8>, LLMError> {
+        inbound::encode_response(response)
+    }
+
+    fn new_stream_encoder(&self) -> Option<Box<dyn StreamEncoder>> {
+        Some(Box::new(ChatStreamEncoder::new()))
+    }
 }
 
 pub fn build_body(req: &WireRequest) -> Result<Value, LLMError> {
@@ -101,8 +118,16 @@ pub fn build_body(req: &WireRequest) -> Result<Value, LLMError> {
         body.insert("user".into(), json!(user));
     }
     if req.stream {
-        // 不带这个，流式响应最后一帧就没有 usage。
-        body.insert("stream_options".into(), json!({ "include_usage": true }));
+        // 不带 `include_usage` 的话，流式响应最后一帧就没有 usage。
+        //
+        // **合并而不是覆盖**：调用方可能通过 `extra` 传了自己的 `stream_options`
+        // （比如 `chunk_include_obfuscation`），直接盖掉会静默丢掉那个键。
+        let mut so = match body.get("stream_options") {
+            Some(Value::Object(o)) => o.clone(),
+            _ => serde_json::Map::new(),
+        };
+        so.insert("include_usage".into(), json!(true));
+        body.insert("stream_options".into(), Value::Object(so));
     }
 
     if !req.tools.is_empty() {
@@ -718,6 +743,23 @@ mod tests {
     fn build(req: &ChatRequest) -> HttpRequest {
         let ir = crate::types::lift_request(req);
         OpenAiChatCodec.encode_request(&ir, &cfg()).unwrap()
+    }
+
+    /// 调用方自己传的 `stream_options` 键不能被我们盖掉。
+    #[test]
+    fn stream_options_are_merged_not_overwritten() {
+        let mut ir = WireRequest::new("gpt-4o");
+        ir.stream = true;
+        ir.extra.insert(
+            "stream_options".into(),
+            json!({"chunk_include_obfuscation": true}),
+        );
+        let b = build_body(&ir).unwrap();
+        assert_eq!(b["stream_options"]["include_usage"], true);
+        assert_eq!(
+            b["stream_options"]["chunk_include_obfuscation"], true,
+            "调用方设的键必须保住"
+        );
     }
 
     #[test]

@@ -3,8 +3,9 @@
 //! 原生支持：扩展思考（带签名的思考块）、工具调用、按块 `cache_control` 的
 //! 提示词缓存（5m / 1h 两档）、按 TTL 分档的缓存写入用量。
 //!
-//! 出站方向的 `decode_request` / `encode_response` / `new_stream_encoder` 尚未实现
-//! （网关方向），由 trait 默认实现返回 `Unsupported`。
+//! 入站（网关）方向的 `decode_request` / `encode_response` / `new_stream_encoder`
+//! 在 [`inbound`] 里实现：别的客户端把 `/v1/messages` 报文发给我们时，解成 IR
+//! 再按目标协议编回去。
 
 use bytes::Bytes;
 use serde::Deserialize;
@@ -12,13 +13,18 @@ use serde_json::{Value, json};
 
 use crate::error::{ErrorContext, LLMError};
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
-use crate::protocol::codec::Codec;
+use crate::protocol::codec::{Codec, StreamEncoder};
 use crate::protocol::ir::{
     Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource, Protocol,
     ProtocolId, ToolChoice, ToolResultBlock, ToolResultContent, Usage, WireRequest, WireResponse,
 };
 use crate::sse::{SseFrame, SseMapper, SseOutcome};
 use crate::types::StreamChunk;
+
+mod inbound;
+
+pub use inbound::AnthropicStreamEncoder;
+
 
 pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -65,6 +71,18 @@ impl Codec for AnthropicCodec {
 
     fn new_stream_decoder(&self) -> Box<dyn SseMapper> {
         Box::new(AnthropicSseMapper::default())
+    }
+
+    fn decode_request(&self, body: &[u8]) -> Result<WireRequest, LLMError> {
+        inbound::decode_request(body)
+    }
+
+    fn encode_response(&self, response: &WireResponse) -> Result<Vec<u8>, LLMError> {
+        inbound::encode_response(response)
+    }
+
+    fn new_stream_encoder(&self) -> Option<Box<dyn StreamEncoder>> {
+        Some(Box::new(AnthropicStreamEncoder::new()))
     }
 }
 

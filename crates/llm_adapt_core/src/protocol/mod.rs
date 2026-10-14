@@ -4,15 +4,21 @@
 //! （给人用的角色感知 API）。方向严格单向，`protocol` 不认识 `types`。
 //!
 //! * [`ir`] —— 协议无关的中间表示。所有转换都经过它。
-//! * [`codec`] —— [`Codec`] trait 与 [`ProtocolRegistry`]。
+//! * [`codec`] —— [`Codec`] trait 与 [`ProtocolRegistry`]（六个方向：出站三 + 入站三）。
+//! * [`convert`] —— 网关方向的跨协议转换器 [`ProtocolConverter`]，任意两协议经
+//!   `decode(A) → IR → encode(B)` 互通；同协议短路为字节直通。
+//! * [`shared`] —— 入站方向各协议共用的小工具（SSE 帧渲染、id 生成）。
 
 pub mod anthropic;
 pub mod codec;
+pub mod convert;
 pub mod ir;
 pub mod oai_chat;
 pub mod oai_responses;
+pub mod shared;
 
 pub use codec::{Codec, ProtocolRegistry, StreamEncoder, decode_stream};
+pub use convert::{ProtocolConverter, StreamConverter};
 pub use ir::*;
 
 use codec::ProtocolRegistry as Registry;
