@@ -45,6 +45,9 @@ pub mod server_tools;
 pub mod sse;
 pub mod types;
 
+// 钩子 trait 的签名里出现 `Bytes`，所以库要把它再导出一遍 ——
+// 否则每个实现钩子的消费方都得自己依赖一次 bytes。
+pub use bytes::Bytes;
 pub use capability::{ModelCapabilities, ModelCapabilityTable};
 pub use client::{LLMClient, LLMClientBuilder};
 pub use error::{ErrorContext, LLMError};
@@ -54,7 +57,7 @@ pub use http::{
 };
 pub use protocol::ir::{
     Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource,
-    ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind, ToolResultBlock, ToolResultContent,
+    RequestMeta, RequestPurpose, ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind, ToolResultBlock, ToolResultContent,
     ToolSpec, Usage, UsageSource, WireMessage, WireRequest, WireResponse,
 };
 pub use server_tools::{resolve_specs, spec_from_raw, ServerTool};

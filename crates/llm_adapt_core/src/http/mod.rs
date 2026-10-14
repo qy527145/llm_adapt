@@ -134,7 +134,7 @@ impl HttpExecutor {
             match result {
                 Ok(raw) => {
                     for hook in &self.hooks {
-                        hook.after_raw_response(&raw);
+                        hook.after_raw_response(req, &raw);
                     }
                     if let Some(err) = error_from_status(&raw) {
                         if self.retry.should_retry(attempt, &err) {
@@ -194,7 +194,7 @@ impl HttpExecutor {
                 body,
             };
             for hook in &self.hooks {
-                hook.after_raw_response(&raw);
+                hook.after_raw_response(req, &raw);
             }
             return Err(
                 error_from_status(&raw).unwrap_or_else(|| LLMError::Provider {
@@ -208,13 +208,21 @@ impl HttpExecutor {
         // 流式这边没有对应的时机 —— 响应体是逐块来的，等拼完再回调就等于把整段
         // 响应缓冲在内存里。
         let hooks = self.hooks.clone();
+        // 流要活过这个作用域，请求得跟着它一起进去 —— 钩子靠它配对。
+        let req_for_hooks = req.clone();
         let stream = resp.bytes_stream().map_err(LLMError::from).boxed();
+        // 把「流结束」这件事也交代出去：guard 与流同生命周期，被 drop 时回调一次。
+        // 正常收完、出错、被提前取消都会走到这里 —— 抓包方因此不必靠超时猜收尾。
+        let guard = StreamEndGuard {
+            hooks: hooks.clone(),
+            request: req_for_hooks,
+        };
         Ok((
             meta,
             Box::pin(stream.map(move |chunk| {
                 if let Ok(bytes) = &chunk {
-                    for h in &hooks {
-                        h.on_stream_chunk(bytes);
+                    for h in &guard.hooks {
+                        h.on_stream_chunk(&guard.request, bytes);
                     }
                 }
                 chunk
@@ -292,6 +300,20 @@ fn build_reqwest_client(config: &ClientConfig) -> Result<Client, LLMError> {
     builder.build().map_err(|e| LLMError::Config {
         message: format!("failed to build HTTP client: {e}"),
     })
+}
+
+/// 与流同生命周期的收尾哨兵：drop 时给每个钩子发一次 `on_stream_end`。
+struct StreamEndGuard {
+    hooks: Vec<Arc<dyn RequestHook>>,
+    request: HttpRequest,
+}
+
+impl Drop for StreamEndGuard {
+    fn drop(&mut self) {
+        for h in &self.hooks {
+            h.on_stream_end(&self.request);
+        }
+    }
 }
 
 fn error_from_status(raw: &RawHttpResponse) -> Option<LLMError> {
