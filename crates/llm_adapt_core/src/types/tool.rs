@@ -39,16 +39,6 @@ impl ToolDefinition {
 }
 
 /// How aggressively the model should pick tools.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ToolChoice {
-    /// Model decides freely (default).
-    #[default]
-    Auto,
-    /// Model must not call any tool.
-    None,
-    /// Model must call some tool (any).
-    Required,
-    /// Model must call this specific tool.
-    Specific { name: String },
-}
+///
+/// 定义在 IR 层，这里再导出。
+pub use crate::protocol::ir::ToolChoice;

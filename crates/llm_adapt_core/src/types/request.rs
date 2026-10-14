@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use super::conversation::Conversation;
-use super::tool::{ToolChoice, ToolDefinition};
+use super::tool::ToolDefinition;
+
+// 这两个是 wire 概念（决定请求体长什么样），定义在 IR 层，这里再导出。
+pub use crate::protocol::ir::{ResponseFormat, ToolChoice};
 
 /// Top-level request shared by every provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,19 +91,4 @@ impl ChatRequest {
             user_id: None,
         }
     }
-}
-
-/// Desired shape of the assistant's response.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ResponseFormat {
-    #[default]
-    Text,
-    Json,
-    JsonSchema {
-        name: String,
-        schema: serde_json::Value,
-        #[serde(default)]
-        strict: bool,
-    },
 }

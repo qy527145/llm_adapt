@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while let Some(chunk) = stream.next().await {
         match chunk? {
-            StreamChunk::TextDelta { text } => {
+            StreamChunk::TextDelta { text, .. } => {
                 print!("{text}");
                 std::io::stdout().flush().ok();
             }

@@ -95,6 +95,11 @@ pub enum LLMError {
     /// No handler was registered for the requested `api_format`.
     #[error("no handler registered for api_format = {api_format}")]
     HandlerNotFound { api_format: String },
+
+    /// 该实现尚未支持这项能力（例如入站方向的编解码还没写）。
+    /// 与 `Validation` 区分开：这不是调用方用错了，是本库还没做。
+    #[error("unsupported: {message}")]
+    Unsupported { message: String },
 }
 
 impl LLMError {
@@ -132,6 +137,10 @@ impl LLMError {
 
     pub fn provider(msg: impl fmt::Display) -> Self {
         LLMError::Provider { message: msg.to_string(), ctx: ErrorContext::default() }
+    }
+
+    pub fn unsupported(msg: impl fmt::Display) -> Self {
+        LLMError::Unsupported { message: msg.to_string() }
     }
 }
 

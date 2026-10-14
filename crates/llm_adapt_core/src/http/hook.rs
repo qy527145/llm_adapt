@@ -1,6 +1,6 @@
 //! Extension hooks invoked around every HTTP call.
 
-use crate::handler::{HttpRequest, RawHttpResponse};
+use super::{HttpRequest, RawHttpResponse};
 
 /// Callbacks fired by [`crate::http::HttpExecutor`] around request execution.
 ///

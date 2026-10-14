@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use futures_util::StreamExt;
 use llm_adapt_core::{
-    CacheMarker, ChatRequest, Conversation, LLMClient, StreamChunk, SystemPrompt, Turn,
-    UserMessage,
+    CacheMarker, ChatRequest, Conversation, LLMClient, Protocol, ProtocolId, StreamChunk,
+    SystemPrompt, Turn, UserMessage,
 };
 use serde::Serialize;
 
@@ -67,7 +67,9 @@ async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
     let mut req = ChatRequest::new(&model, &api_format, conversation);
     if let Some(t) = args.temperature { req.temperature = Some(t); }
     if let Some(m) = args.max_tokens { req.max_tokens = Some(m); }
-    if req.max_tokens.is_none() && api_format == "anthropic_v2" {
+    if req.max_tokens.is_none()
+        && ProtocolId::new(&api_format).protocol() == Some(Protocol::Anthropic)
+    {
         req.max_tokens = Some(1024);
     }
 
@@ -81,7 +83,7 @@ async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             match &chunk {
-                StreamChunk::TextDelta { text: t } => {
+                StreamChunk::TextDelta { text: t, .. } => {
                     if matches!(fmt, OutputFormat::Human) {
                         print!("{t}");
                         use std::io::Write;
@@ -89,7 +91,7 @@ async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
                     }
                     text.push_str(t);
                 }
-                StreamChunk::ThinkingDelta { text: t, signature_delta } => {
+                StreamChunk::ThinkingDelta { text: t, signature_delta, .. } => {
                     thinking.push_str(t);
                     if let Some(s) = signature_delta {
                         thinking_sig.push_str(s);

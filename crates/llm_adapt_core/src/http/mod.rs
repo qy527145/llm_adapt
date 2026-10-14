@@ -8,19 +8,73 @@ pub mod config;
 pub mod hook;
 pub mod retry;
 
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
 use bytes::Bytes;
-use futures_util::{StreamExt, TryStreamExt};
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{ErrorContext, LLMError};
-use crate::handler::{ByteStream, HttpMethod, HttpRequest, RawHttpResponse};
 
 pub use config::{ClientConfig, ProxyConfig};
 pub use hook::RequestHook;
 pub use retry::RetryPolicy;
+
+// ---------------------------------------------------------------------------
+// 传输层的公共类型
+//
+// 这几个类型属于 HTTP 层（协议层要用它们，但它们是「怎么发出去」，不是
+// 「发什么」），因此定义在这里。`handler` 会重新导出它们以保持既有路径可用。
+// ---------------------------------------------------------------------------
+
+/// HTTP 方法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+    Patch,
+}
+
+/// 供应商中立的 HTTP 请求描述。
+///
+/// 协议层产出它，[`HttpExecutor`] 把它变成真正的网络调用。它的 `body` 是**最终的
+/// 字节**——「原始报文检视」功能拿到的就是它，不存在二次序列化。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpRequest {
+    pub method: HttpMethod,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl HttpRequest {
+    /// 把请求体当 UTF-8 渲染，用于调试 / `preview`。
+    /// 空 body 或非 UTF-8 时返回 `None`。
+    pub fn body_as_str(&self) -> Option<&str> {
+        if self.body.is_empty() {
+            return None;
+        }
+        std::str::from_utf8(&self.body).ok()
+    }
+}
+
+/// 未经解码的原始响应。hook 拿到它做日志与调试。
+#[derive(Debug, Clone)]
+pub struct RawHttpResponse {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: Bytes,
+}
+
+/// 网络层吐出的原始响应字节流。
+pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, LLMError>> + Send>>;
+
 
 /// Stateful HTTP executor. Holds a `reqwest::Client`, configuration, retry
 /// policy, and a list of hooks. Cloning is cheap — internals are `Arc`-shared.

@@ -7,17 +7,9 @@ use serde::{Deserialize, Serialize};
 use super::conversation::AssistantMessage;
 use super::usage::{RateLimitInfo, Usage};
 
-/// Why the model stopped generating.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FinishReason {
-    Stop,
-    Length,
-    ToolCall,
-    Safety,
-    StopSequence,
-    Other,
-}
+// FinishReason 定义在 IR 层 —— 各家协议 stop_reason 字符串的归一表也在那边。
+// 注意它现在带 `Other { value }`，不再有损。
+pub use crate::protocol::ir::FinishReason;
 
 /// Unified non-streaming response.
 #[derive(Debug, Clone, Serialize, Deserialize)]

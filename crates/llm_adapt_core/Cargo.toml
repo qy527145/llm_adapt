@@ -20,6 +20,8 @@ thiserror    = { workspace = true }
 bytes        = { workspace = true }
 futures-util = { workspace = true }
 tracing      = { workspace = true }
+# IR 的 `extra` 需要保序透传未建模的顶层字段（serde flatten 进 IndexMap）。
+indexmap     = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
 tokio        = { workspace = true }

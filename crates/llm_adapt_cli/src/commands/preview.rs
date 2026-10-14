@@ -4,8 +4,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use llm_adapt_core::{
-    CacheMarker, ChatRequest, Conversation, HttpMethod, HttpRequest, LLMClient, SystemPrompt,
-    Turn, UserMessage,
+    CacheMarker, ChatRequest, Conversation, HttpMethod, HttpRequest, LLMClient, Protocol,
+    ProtocolId, SystemPrompt, Turn, UserMessage,
 };
 use serde::Serialize;
 
@@ -101,10 +101,15 @@ fn build_request(api_format: &str, model: &str, args: &PreviewArgs) -> Result<Ch
     }
     if let Some(m) = args.max_tokens {
         req.max_tokens = Some(m);
-    } else if api_format == "anthropic_v2" {
+    } else if is_anthropic(api_format) {
         req.max_tokens = Some(1024);
     }
     Ok(req)
+}
+
+/// 协议名先归一，`anthropic` / `anthropic_v2` 一视同仁。
+fn is_anthropic(api_format: &str) -> bool {
+    ProtocolId::new(api_format).protocol() == Some(Protocol::Anthropic)
 }
 
 fn output_preview(

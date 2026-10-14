@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use clap::Subcommand;
-use llm_adapt_core::{HandlerRegistry, ModelCapabilityTable};
+use llm_adapt_core::{ModelCapabilityTable, ProtocolRegistry};
 use serde::Serialize;
 
 use crate::output::{emit_json, OutputFormat};
@@ -28,12 +28,14 @@ pub fn run(cmd: HandlersCmd, fmt: OutputFormat) -> Result<()> {
 }
 
 fn list(fmt: OutputFormat) -> Result<()> {
-    let registry = HandlerRegistry::new();
-    llm_adapt_core::handlers::register_defaults(&registry);
+    let registry = ProtocolRegistry::new();
+    llm_adapt_core::protocol::register_defaults(&registry);
     let views: Vec<HandlerView> = registry
         .list()
         .into_iter()
-        .map(|k| HandlerView { api_format: k })
+        .map(|k| HandlerView {
+            api_format: k.to_string(),
+        })
         .collect();
     match fmt {
         OutputFormat::Json => emit_json(&serde_json::json!({"handlers": views}))?,
