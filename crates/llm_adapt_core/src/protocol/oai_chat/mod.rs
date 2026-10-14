@@ -53,10 +53,7 @@ impl Codec for OpenAiChatCodec {
         }
         Ok(HttpRequest {
             method: HttpMethod::Post,
-            url: format!(
-                "{}/v1/chat/completions",
-                config.base_url.trim_end_matches('/')
-            ),
+            url: crate::protocol::codec::endpoint_url(config, Protocol::OpenAiChat.default_path()),
             headers,
             body: serde_json::to_vec(&body)?,
         })

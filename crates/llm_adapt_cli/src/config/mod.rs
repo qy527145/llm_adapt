@@ -121,6 +121,7 @@ impl Profile {
 
         llm_adapt_core::ClientConfig {
             base_url: self.base_url.clone(),
+            path: None,
             api_key: self.resolved_api_key(),
             proxy,
             connect_timeout: Duration::from_secs(self.connect_timeout_secs),

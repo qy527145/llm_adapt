@@ -25,6 +25,26 @@ pub fn decode_stream(codec: &dyn Codec, bytes: ByteStream) -> ChunkStream {
     Box::pin(SseChunkStream::new(bytes, codec.new_stream_decoder()))
 }
 
+/// 拼出请求 URL：`base_url` + 协议默认路径，或 [`ClientConfig::path`] 指定的路径。
+///
+/// 独立成函数是因为三个 codec 都要用，而「base_url 带不带尾斜杠」「路径从哪来」
+/// 这类细节一旦各写各的就会分叉。
+pub fn endpoint_url(config: &ClientConfig, default_path: &str) -> String {
+    let base = config.base_url.trim_end_matches('/');
+    match &config.path {
+        Some(p) if !p.is_empty() => format!("{base}{}", ensure_leading_slash(p)),
+        _ => format!("{base}{default_path}"),
+    }
+}
+
+fn ensure_leading_slash(p: &str) -> String {
+    if p.starts_with('/') {
+        p.to_string()
+    } else {
+        format!("/{p}")
+    }
+}
+
 /// 一个协议的全部编解码能力。
 ///
 /// 对象安全：注册表里存的是 `Arc<dyn Codec>`，因此各协议实现不能带泛型方法。

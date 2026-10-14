@@ -18,6 +18,13 @@ pub struct ClientConfig {
     /// 提供商的基础 URL（如 `https://api.openai.com`）。handler 自行拼接
     /// 各自的路径（如 `/v1/chat/completions`）。
     pub base_url: String,
+    /// 覆盖协议默认的请求路径（默认如 `/v1/messages`）。
+    ///
+    /// 用于两类端点：路径与官方不同的兼容层（Gemini 的 OpenAI 兼容端点是
+    /// `/v1beta/openai/chat/completions`，不是 `/v1/chat/completions`），
+    /// 以及前面挂了网关、需要指定路径的情况。`None` 时用协议自己的默认路径。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     /// API key / bearer token。若认证方式非标准，某些 handler 也可能
     /// 从 `default_headers` 里取。
     pub api_key: String,
@@ -45,6 +52,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             base_url: String::new(),
+            path: None,
             api_key: String::new(),
             proxy: None,
             connect_timeout: default_connect_timeout(),

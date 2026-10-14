@@ -36,6 +36,24 @@ mod tests {
         r
     }
 
+    /// 自定义路径要能覆盖协议默认路径，且 base_url 的尾斜杠不出乱子。
+    #[test]
+    fn custom_path_overrides_the_protocol_default() {
+        let mut cfg = ClientConfig::new("https://gw.example.com/anthropic/", "k");
+        let mut ir = WireRequest::new("m");
+        ir.max_tokens = Some(16);
+
+        // 默认：base_url 去尾斜杠 + 协议默认路径
+        let codec = registry().get(&ProtocolId::new("anthropic")).unwrap();
+        let http = codec.encode_request(&ir, &cfg).unwrap();
+        assert_eq!(http.url, "https://gw.example.com/anthropic/v1/messages");
+
+        // 覆盖：用指定路径（相对写法要自动补前导斜杠）
+        cfg.path = Some("v1/beta/messages".into());
+        let http = codec.encode_request(&ir, &cfg).unwrap();
+        assert_eq!(http.url, "https://gw.example.com/anthropic/v1/beta/messages");
+    }
+
     #[test]
     fn all_builtin_protocols_are_registered() {
         assert_eq!(
