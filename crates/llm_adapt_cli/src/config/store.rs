@@ -26,10 +26,9 @@ pub fn load() -> Result<Settings> {
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
-    let parsed: Settings = toml::from_str(&text)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let parsed: Settings =
+        toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
     Ok(parsed)
 }
 
@@ -37,8 +36,7 @@ pub fn load() -> Result<Settings> {
 pub fn save(settings: &Settings) -> Result<PathBuf> {
     let path = config_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     let text = toml::to_string_pretty(settings).context("serialize settings")?;
     fs::write(&path, text).with_context(|| format!("write {}", path.display()))?;
@@ -47,10 +45,9 @@ pub fn save(settings: &Settings) -> Result<PathBuf> {
 
 /// 从 TOML 文件导入设置。导入的文件会完全替换当前配置。
 pub fn import_from(file: &Path) -> Result<Settings> {
-    let text = fs::read_to_string(file)
-        .with_context(|| format!("read {}", file.display()))?;
-    let parsed: Settings = toml::from_str(&text)
-        .with_context(|| format!("parse {}", file.display()))?;
+    let text = fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
+    let parsed: Settings =
+        toml::from_str(&text).with_context(|| format!("parse {}", file.display()))?;
     save(&parsed)?;
     Ok(parsed)
 }

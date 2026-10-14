@@ -66,7 +66,10 @@ pub struct SystemPrompt {
 impl SystemPrompt {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
-            blocks: vec![SystemBlock::Text { text: text.into(), cache: None }],
+            blocks: vec![SystemBlock::Text {
+                text: text.into(),
+                cache: None,
+            }],
         }
     }
 
@@ -113,7 +116,10 @@ pub struct UserMessage {
 impl UserMessage {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
-            blocks: vec![UserBlock::Text { text: text.into(), cache: None }],
+            blocks: vec![UserBlock::Text {
+                text: text.into(),
+                cache: None,
+            }],
         }
     }
 
@@ -175,7 +181,10 @@ pub struct AssistantMessage {
 impl AssistantMessage {
     pub fn text(text: impl Into<String>) -> Self {
         Self {
-            blocks: vec![AssistantBlock::Text { text: text.into(), cache: None }],
+            blocks: vec![AssistantBlock::Text {
+                text: text.into(),
+                cache: None,
+            }],
         }
     }
 
@@ -194,9 +203,12 @@ impl AssistantMessage {
     /// 本条消息里的所有工具调用，按顺序。
     pub fn tool_calls(&self) -> impl Iterator<Item = (&str, &str, &str)> {
         self.blocks.iter().filter_map(|b| match b {
-            AssistantBlock::ToolCall { id, name, arguments, .. } => {
-                Some((id.as_str(), name.as_str(), arguments.as_str()))
-            }
+            AssistantBlock::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => Some((id.as_str(), name.as_str(), arguments.as_str())),
             _ => None,
         })
     }
@@ -264,7 +276,10 @@ mod tests {
 
     #[test]
     fn parsed_arguments_only_on_tool_call() {
-        let text = AssistantBlock::Text { text: "hi".into(), cache: None };
+        let text = AssistantBlock::Text {
+            text: "hi".into(),
+            cache: None,
+        };
         assert!(text.parsed_arguments().is_none());
 
         let call = AssistantBlock::ToolCall {
@@ -281,7 +296,10 @@ mod tests {
     #[test]
     fn assistant_message_helpers() {
         let mut m = AssistantMessage::text("hello");
-        m.push(AssistantBlock::Thinking { text: "hm".into(), signature: None });
+        m.push(AssistantBlock::Thinking {
+            text: "hm".into(),
+            signature: None,
+        });
         m.push(AssistantBlock::ToolCall {
             id: "t1".into(),
             name: "f".into(),
@@ -300,7 +318,10 @@ mod tests {
         let s = SystemPrompt::text("you are concise").with_cache(CacheMarker::ephemeral_1h());
         match &s.blocks[0] {
             SystemBlock::Text { cache, .. } => {
-                assert_eq!(cache.unwrap().ttl, super::super::cache::CacheTtl::Ephemeral1h);
+                assert_eq!(
+                    cache.unwrap().ttl,
+                    super::super::cache::CacheTtl::Ephemeral1h
+                );
             }
         }
     }

@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::LLMError;
 use crate::protocol::ir::{Block, FinishReason};
@@ -299,7 +299,11 @@ mod tests {
             } => assert_eq!(arguments_delta.as_deref(), Some(r#"{"a":1}"#)),
             _ => unreachable!(),
         }
-        assert!(chunks.iter().any(|c| matches!(c, StreamChunk::BlockStop { .. })));
+        assert!(
+            chunks
+                .iter()
+                .any(|c| matches!(c, StreamChunk::BlockStop { .. }))
+        );
     }
 
     #[test]
@@ -331,6 +335,10 @@ mod tests {
             &mut m,
             r#"{"type":"response.completed","response":{"status":"completed"}}"#,
         );
-        assert!(!chunks.iter().any(|c| matches!(c, StreamChunk::Usage { .. })));
+        assert!(
+            !chunks
+                .iter()
+                .any(|c| matches!(c, StreamChunk::Usage { .. }))
+        );
     }
 }

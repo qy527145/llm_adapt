@@ -24,7 +24,7 @@
 //! （网关方向），由 trait 默认实现返回 `Unsupported`。
 
 use bytes::Bytes;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::error::LLMError;
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
@@ -65,7 +65,10 @@ impl Codec for OpenAiResponsesCodec {
         }
         Ok(HttpRequest {
             method: HttpMethod::Post,
-            url: crate::protocol::codec::endpoint_url(config, Protocol::OpenAiResponses.default_path()),
+            url: crate::protocol::codec::endpoint_url(
+                config,
+                Protocol::OpenAiResponses.default_path(),
+            ),
             headers,
             body: serde_json::to_vec(&body)?,
         })
@@ -102,7 +105,10 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
         }
     }
 
-    body.insert("input".into(), Value::Array(messages_to_items(&request.messages)));
+    body.insert(
+        "input".into(),
+        Value::Array(messages_to_items(&request.messages)),
+    );
 
     if !request.tools.is_empty() {
         body.insert(
@@ -204,7 +210,9 @@ fn messages_to_items(messages: &[WireMessage]) -> Vec<Value> {
                         Block::Text { text, .. } => {
                             text_run.push(json!({"type": "output_text", "text": text}));
                         }
-                        Block::ToolUse { id, name, input, .. } => {
+                        Block::ToolUse {
+                            id, name, input, ..
+                        } => {
                             flush_text_run(&mut text_run, &mut out);
                             out.push(json!({
                                 "type": "function_call",
@@ -260,7 +268,11 @@ fn messages_to_items(messages: &[WireMessage]) -> Vec<Value> {
                                 "image_url": image_url(source),
                             }));
                         }
-                        Block::ToolResult { tool_use_id, content, .. } => {
+                        Block::ToolResult {
+                            tool_use_id,
+                            content,
+                            ..
+                        } => {
                             flush_parts(&mut parts, role_str, &mut out);
                             out.push(json!({
                                 "type": "function_call_output",
@@ -350,7 +362,9 @@ pub fn decode_usage(v: Option<&Value>) -> Usage {
 fn finish_from_status(status: Option<&str>, saw_tool_call: bool) -> FinishReason {
     match status {
         Some("incomplete") => FinishReason::Length,
-        Some("failed") => FinishReason::Other { value: "failed".into() },
+        Some("failed") => FinishReason::Other {
+            value: "failed".into(),
+        },
         _ if saw_tool_call => FinishReason::ToolCall,
         _ => FinishReason::Stop,
     }
@@ -411,7 +425,9 @@ fn item_to_block(item: &Value) -> Option<Block> {
                 .unwrap_or_default()
                 .to_string(),
             input: parse_arguments(
-                item.get("arguments").and_then(Value::as_str).unwrap_or("{}"),
+                item.get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or("{}"),
             ),
             cache: None,
         }),
@@ -447,8 +463,7 @@ fn parse_arguments(raw: &str) -> Value {
 /// 响应里已被显式建模、不该落进 `extra` 的顶层字段。
 ///
 /// 不在这张表里的一律进 `extra` 原样透传 —— 把字段列进来等于承诺「我们已经读懂它」。
-const KNOWN_RESPONSE_FIELDS: &[&str] =
-    &["id", "model", "output", "status", "usage", "object"];
+const KNOWN_RESPONSE_FIELDS: &[&str] = &["id", "model", "output", "status", "usage", "object"];
 
 fn decode_response(body: &[u8]) -> Result<WireResponse, LLMError> {
     let v: Value = serde_json::from_slice(body).map_err(|e| LLMError::Parse {
@@ -623,7 +638,10 @@ mod tests {
         let mut ir = WireRequest::new("gpt-5");
         ir.messages.push(WireMessage::new(
             Role::Assistant,
-            vec![Block::Thinking { text: "only summary".into(), signature: None }],
+            vec![Block::Thinking {
+                text: "only summary".into(),
+                signature: None,
+            }],
         ));
         let b = body(&ir);
         assert_eq!(b["input"].as_array().unwrap().len(), 0);
@@ -636,7 +654,9 @@ mod tests {
             Role::User,
             vec![Block::ToolResult {
                 tool_use_id: "call_1".into(),
-                content: crate::protocol::ir::ToolResultContent::Text("result".into()),
+                content: crate::protocol::ir::ToolResultContent::Text {
+                    text: "result".into(),
+                },
                 is_error: false,
                 cache: None,
             }],
@@ -665,7 +685,8 @@ mod tests {
     fn unmodeled_top_level_fields_pass_through() {
         let mut ir = WireRequest::new("gpt-5");
         ir.extra.insert("store".into(), json!(false));
-        ir.extra.insert("previous_response_id".into(), json!("resp_1"));
+        ir.extra
+            .insert("previous_response_id".into(), json!("resp_1"));
         ir.extra
             .insert("include".into(), json!(["reasoning.encrypted_content"]));
         // extra 不能盖掉建模字段
@@ -731,7 +752,9 @@ mod tests {
         let raw = br#"{"id":"resp_1","model":"gpt-5","status":"completed","output":[
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi there"}]}
         ]}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         assert_eq!(resp.concat_text(), "hi there");
         assert_eq!(resp.finish_reason, FinishReason::Stop);
     }
@@ -741,10 +764,14 @@ mod tests {
         let raw = br#"{"id":"r","model":"gpt-5","status":"completed","output":[
             {"type":"function_call","call_id":"c1","name":"f","arguments":"{\"a\":1}"}
         ]}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         assert_eq!(resp.finish_reason, FinishReason::ToolCall);
         match &resp.content[0] {
-            Block::ToolUse { id, name, input, .. } => {
+            Block::ToolUse {
+                id, name, input, ..
+            } => {
                 assert_eq!(id, "c1");
                 assert_eq!(name, "f");
                 assert_eq!(input["a"], 1);
@@ -761,7 +788,9 @@ mod tests {
              "encrypted_content":"enc_xyz"},
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"ans"}]}
         ]}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         match &resp.content[0] {
             Block::Thinking { text, signature } => {
                 assert_eq!(text, "hmm");
@@ -778,7 +807,9 @@ mod tests {
             {"type":"web_search_call","id":"ws_1","status":"completed"},
             {"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}
         ]}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         assert_eq!(resp.content.len(), 2);
         assert!(matches!(resp.content[0], Block::Unmodeled { .. }));
     }
@@ -786,7 +817,9 @@ mod tests {
     #[test]
     fn incomplete_status_maps_to_length() {
         let raw = br#"{"id":"r","model":"gpt-5","status":"incomplete","output":[]}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         assert_eq!(resp.finish_reason, FinishReason::Length);
     }
 
@@ -797,7 +830,9 @@ mod tests {
             "usage":{"input_tokens":1000,"output_tokens":50,"total_tokens":1050,
                      "input_tokens_details":{"cached_tokens":750},
                      "output_tokens_details":{"reasoning_tokens":20}}}"#;
-        let resp = OpenAiResponsesCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiResponsesCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         assert_eq!(resp.usage.input_tokens, 250);
         assert_eq!(resp.usage.cache.read_tokens, 750);
         assert_eq!(resp.usage.thinking_tokens, 20);
@@ -809,7 +844,9 @@ mod tests {
     fn structured_output_is_rejected_not_silently_dropped() {
         let mut ir = WireRequest::new("gpt-5");
         ir.response_format = ResponseFormat::Json;
-        let err = OpenAiResponsesCodec.encode_request(&ir, &cfg()).unwrap_err();
+        let err = OpenAiResponsesCodec
+            .encode_request(&ir, &cfg())
+            .unwrap_err();
         assert!(matches!(err, LLMError::Unsupported { .. }), "实际 {err:?}");
     }
 
@@ -858,7 +895,9 @@ mod tests {
                    event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":3}}}\n\n";
         let (blocks, finish, _) = collect(sse).await;
         match &blocks[0] {
-            Block::ToolUse { id, name, input, .. } => {
+            Block::ToolUse {
+                id, name, input, ..
+            } => {
                 assert_eq!(id, "call_1");
                 assert_eq!(name, "search");
                 assert_eq!(input["q"], "rust");
@@ -877,8 +916,11 @@ mod tests {
         match &blocks[0] {
             Block::Thinking { text, signature } => {
                 assert_eq!(text, "think");
-                assert_eq!(signature.as_deref(), Some("enc_1"),
-                    "encrypted_content 必须保留，否则思考内容无法回传");
+                assert_eq!(
+                    signature.as_deref(),
+                    Some("enc_1"),
+                    "encrypted_content 必须保留，否则思考内容无法回传"
+                );
             }
             other => panic!("期望 thinking，得到 {other:?}"),
         }

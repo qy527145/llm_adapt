@@ -43,7 +43,10 @@ pub struct SseOutcome {
 impl SseOutcome {
     /// 非终止帧的产出。
     pub fn chunks(chunks: Vec<StreamChunk>) -> Self {
-        Self { chunks, terminal: false }
+        Self {
+            chunks,
+            terminal: false,
+        }
     }
 }
 
@@ -71,7 +74,10 @@ impl SseMapper for Box<dyn SseMapper> {
 /// 因此按起始位置取靠前的那个即可。
 fn find_boundary(buf: &[u8]) -> Option<(usize, usize)> {
     let lf = buf.windows(2).position(|w| w == b"\n\n").map(|p| (p, 2));
-    let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (p, 4));
+    let crlf = buf
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| (p, 4));
     match (lf, crlf) {
         (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
         (Some(a), None) => Some(a),

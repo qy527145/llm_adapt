@@ -12,7 +12,7 @@ pub mod ir;
 pub mod oai_chat;
 pub mod oai_responses;
 
-pub use codec::{decode_stream, Codec, ProtocolRegistry, StreamEncoder};
+pub use codec::{Codec, ProtocolRegistry, StreamEncoder, decode_stream};
 pub use ir::*;
 
 use codec::ProtocolRegistry as Registry;
@@ -51,13 +51,20 @@ mod tests {
         // 覆盖：用指定路径（相对写法要自动补前导斜杠）
         cfg.path = Some("v1/beta/messages".into());
         let http = codec.encode_request(&ir, &cfg).unwrap();
-        assert_eq!(http.url, "https://gw.example.com/anthropic/v1/beta/messages");
+        assert_eq!(
+            http.url,
+            "https://gw.example.com/anthropic/v1/beta/messages"
+        );
     }
 
     #[test]
     fn all_builtin_protocols_are_registered() {
         assert_eq!(
-            registry().list().iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+            registry()
+                .list()
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>(),
             vec!["anthropic", "openai_chat", "openai_responses"]
         );
     }
@@ -69,7 +76,11 @@ mod tests {
         let cfg = ClientConfig::new("https://example.invalid", "k");
         let mut ir = WireRequest::new("m");
         ir.max_tokens = Some(16);
-        ir.system = vec![Block::text("人设"), Block::text("技能"), Block::text("记忆")];
+        ir.system = vec![
+            Block::text("人设"),
+            Block::text("技能"),
+            Block::text("记忆"),
+        ];
 
         for id in registry().list() {
             let codec = registry().get(&id).expect("已注册");

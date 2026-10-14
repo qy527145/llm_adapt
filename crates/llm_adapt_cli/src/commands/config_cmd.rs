@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use serde::Serialize;
 
-use crate::config::{store, Profile, Settings};
-use crate::output::{emit_json, print_kv, OutputFormat};
+use crate::config::{Profile, Settings, store};
+use crate::output::{OutputFormat, emit_json, print_kv};
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCmd {
@@ -57,7 +57,11 @@ pub fn run(cmd: ConfigCmd, fmt: OutputFormat) -> Result<()> {
         ConfigCmd::List => list(fmt),
         ConfigCmd::Show { name } => show(name, fmt),
         ConfigCmd::Use { name } => use_profile(name, fmt),
-        ConfigCmd::Set { profile, key, value } => set_field(profile, key, value, fmt),
+        ConfigCmd::Set {
+            profile,
+            key,
+            value,
+        } => set_field(profile, key, value, fmt),
         ConfigCmd::Remove { name } => remove(name, fmt),
         ConfigCmd::Import { file } => import(file, fmt),
         ConfigCmd::Export { out } => export(out, fmt),
@@ -65,7 +69,9 @@ pub fn run(cmd: ConfigCmd, fmt: OutputFormat) -> Result<()> {
             let path = store::config_path()?;
             match fmt {
                 OutputFormat::Human => println!("{}", path.display()),
-                OutputFormat::Json => emit_json(&serde_json::json!({"path": path.display().to_string()}))?,
+                OutputFormat::Json => {
+                    emit_json(&serde_json::json!({"path": path.display().to_string()}))?
+                }
             }
             Ok(())
         }
@@ -166,14 +172,17 @@ fn use_profile(name: String, fmt: OutputFormat) -> Result<()> {
 
 fn set_field(profile: String, key: String, value: String, fmt: OutputFormat) -> Result<()> {
     let mut settings = store::load()?;
-    let entry = settings.profiles.entry(profile.clone()).or_insert_with(Profile::default);
+    let entry = settings
+        .profiles
+        .entry(profile.clone())
+        .or_insert_with(Profile::default);
     match key.as_str() {
-        "base_url"        => entry.base_url = value.clone(),
-        "api_key"         => entry.api_key = value.clone(),
-        "api_format"      => entry.api_format = value.clone(),
-        "default_model"   => entry.default_model = Some(value.clone()),
-        "proxy"           => entry.proxy = Some(value.clone()).filter(|s| !s.is_empty()),
-        "verify_ssl"      => {
+        "base_url" => entry.base_url = value.clone(),
+        "api_key" => entry.api_key = value.clone(),
+        "api_format" => entry.api_format = value.clone(),
+        "default_model" => entry.default_model = Some(value.clone()),
+        "proxy" => entry.proxy = Some(value.clone()).filter(|s| !s.is_empty()),
+        "verify_ssl" => {
             entry.verify_ssl = value
                 .parse::<bool>()
                 .with_context(|| format!("'{value}' is not a bool"))?;
@@ -186,8 +195,14 @@ fn set_field(profile: String, key: String, value: String, fmt: OutputFormat) -> 
     let path = store::save(&settings)?;
     match fmt {
         OutputFormat::Human => {
-            println!("updated profile '{profile}': {key} ← {}",
-                if key == "api_key" { crate::config::mask_secret(&value) } else { value.clone() });
+            println!(
+                "updated profile '{profile}': {key} ← {}",
+                if key == "api_key" {
+                    crate::config::mask_secret(&value)
+                } else {
+                    value.clone()
+                }
+            );
             println!("({})", path.display());
         }
         OutputFormat::Json => emit_json(&serde_json::json!({

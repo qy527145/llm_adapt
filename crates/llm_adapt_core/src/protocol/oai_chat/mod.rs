@@ -12,7 +12,7 @@
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::{ErrorContext, LLMError};
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
@@ -434,10 +434,14 @@ fn decode_response(body: &[u8]) -> Result<WireResponse, LLMError> {
         ctx: ErrorContext::default(),
     })?;
 
-    let choice = dto.choices.into_iter().next().ok_or_else(|| LLMError::Parse {
-        message: "openai: response had no choices".into(),
-        ctx: ErrorContext::default(),
-    })?;
+    let choice = dto
+        .choices
+        .into_iter()
+        .next()
+        .ok_or_else(|| LLMError::Parse {
+            message: "openai: response had no choices".into(),
+            ctx: ErrorContext::default(),
+        })?;
 
     let mut content = Vec::new();
     if let Some(text) = choice.message.content.filter(|s| !s.is_empty()) {
@@ -736,15 +740,17 @@ mod tests {
         let mut user = UserMessage::default();
         user.push(UserBlock::ToolResult {
             call_id: "t1".into(),
-            content: ToolResultContent::Blocks(vec![
-                ToolResultBlock::Text {
-                    text: "Tokyo: 22C".into(),
-                },
-                ToolResultBlock::Image {
-                    url: "https://example.com/x.png".into(),
-                    detail: None,
-                },
-            ]),
+            content: ToolResultContent::Blocks {
+                blocks: vec![
+                    ToolResultBlock::Text {
+                        text: "Tokyo: 22C".into(),
+                    },
+                    ToolResultBlock::Image {
+                        url: "https://example.com/x.png".into(),
+                        detail: None,
+                    },
+                ],
+            },
             is_error: false,
             cache: None,
         });
@@ -808,10 +814,7 @@ mod tests {
         let resp = OpenAiChatCodec
             .decode_response(Bytes::from_static(body))
             .unwrap();
-        assert_eq!(
-            resp.extra.get("system_fingerprint"),
-            Some(&json!("fp_abc"))
-        );
+        assert_eq!(resp.extra.get("system_fingerprint"), Some(&json!("fp_abc")));
     }
 
     /// 服务端工具在 chat/completions 里没有对应物：必须明确报错。

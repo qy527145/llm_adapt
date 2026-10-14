@@ -75,10 +75,18 @@ impl ClientConfig {
     }
 }
 
-fn default_connect_timeout() -> Duration { Duration::from_secs(10) }
-fn default_request_timeout() -> Duration { Duration::from_secs(60) }
-fn default_stream_timeout() -> Duration { Duration::from_secs(60) }
-fn default_true() -> bool { true }
+fn default_connect_timeout() -> Duration {
+    Duration::from_secs(10)
+}
+fn default_request_timeout() -> Duration {
+    Duration::from_secs(60)
+}
+fn default_stream_timeout() -> Duration {
+    Duration::from_secs(60)
+}
+fn default_true() -> bool {
+    true
+}
 
 /// 极简的 `Duration` ⇄ 秒（u64）serde 辅助。
 ///

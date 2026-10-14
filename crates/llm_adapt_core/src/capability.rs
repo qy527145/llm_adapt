@@ -84,16 +84,14 @@ impl ModelCapabilityTable {
 
     pub fn list(&self) -> Vec<((String, String), ModelCapabilities)> {
         let guard = self.inner.read().expect("ModelCapabilityTable poisoned");
-        let mut entries: Vec<_> = guard
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let mut entries: Vec<_> = guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
     }
 }
 
-fn defaults() -> Vec<(&'static str, &'static str, ModelCapabilities)> {    let openai_4o = ModelCapabilities {
+fn defaults() -> Vec<(&'static str, &'static str, ModelCapabilities)> {
+    let openai_4o = ModelCapabilities {
         context_window: 128_000,
         max_output_tokens: 16_384,
         supports_tools: true,

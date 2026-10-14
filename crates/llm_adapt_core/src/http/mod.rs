@@ -75,7 +75,6 @@ pub struct RawHttpResponse {
 /// 网络层吐出的原始响应字节流。
 pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, LLMError>> + Send>>;
 
-
 /// 有状态的 HTTP 执行器。持有 `reqwest::Client`、配置、重试策略与一组钩子。
 /// 克隆开销很小 —— 内部都是 `Arc` 共享。
 #[derive(Clone)]
@@ -142,7 +141,10 @@ impl HttpExecutor {
                     return Ok(raw);
                 }
                 Err(mut err) => {
-                    if let LLMError::Timeout { ref mut elapsed_ms, .. } = err {
+                    if let LLMError::Timeout {
+                        ref mut elapsed_ms, ..
+                    } = err
+                    {
                         *elapsed_ms = start.elapsed().as_millis();
                     }
                     if self.retry.should_retry(attempt, &err) {
@@ -167,7 +169,11 @@ impl HttpExecutor {
             hook.before_request(req);
         }
         let reqwest_req = self.to_reqwest(req)?;
-        let resp = self.client.execute(reqwest_req).await.map_err(LLMError::from)?;
+        let resp = self
+            .client
+            .execute(reqwest_req)
+            .await
+            .map_err(LLMError::from)?;
         let status = resp.status().as_u16();
         let headers: Vec<(String, String)> = resp
             .headers()
@@ -176,26 +182,33 @@ impl HttpExecutor {
             .collect();
         if !resp.status().is_success() {
             let body = resp.bytes().await.unwrap_or_default();
-            let raw = RawHttpResponse { status, headers, body };
+            let raw = RawHttpResponse {
+                status,
+                headers,
+                body,
+            };
             for hook in &self.hooks {
                 hook.after_raw_response(&raw);
             }
-            return Err(error_from_status(&raw).unwrap_or_else(|| LLMError::Provider {
-                message: format!("unexpected status {status}"),
-                ctx: ErrorContext::default().with_status(status),
-            }));
+            return Err(
+                error_from_status(&raw).unwrap_or_else(|| LLMError::Provider {
+                    message: format!("unexpected status {status}"),
+                    ctx: ErrorContext::default().with_status(status),
+                }),
+            );
         }
         let meta = StreamMeta { status, headers };
-        let stream = resp
-            .bytes_stream()
-            .map_err(LLMError::from)
-            .boxed();
+        let stream = resp.bytes_stream().map_err(LLMError::from).boxed();
         Ok((meta, stream))
     }
 
     async fn send_once(&self, req: &HttpRequest) -> Result<RawHttpResponse, LLMError> {
         let reqwest_req = self.to_reqwest(req)?;
-        let resp = self.client.execute(reqwest_req).await.map_err(LLMError::from)?;
+        let resp = self
+            .client
+            .execute(reqwest_req)
+            .await
+            .map_err(LLMError::from)?;
         let status = resp.status().as_u16();
         let headers: Vec<(String, String)> = resp
             .headers()
@@ -203,7 +216,11 @@ impl HttpExecutor {
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
             .collect();
         let body = resp.bytes().await.map_err(LLMError::from)?;
-        Ok(RawHttpResponse { status, headers, body })
+        Ok(RawHttpResponse {
+            status,
+            headers,
+            body,
+        })
     }
 
     fn to_reqwest(&self, req: &HttpRequest) -> Result<reqwest::Request, LLMError> {
@@ -224,9 +241,9 @@ impl HttpExecutor {
         if !req.body.is_empty() {
             builder = builder.body(req.body.clone());
         }
-        builder
-            .build()
-            .map_err(|e| LLMError::Config { message: e.to_string() })
+        builder.build().map_err(|e| LLMError::Config {
+            message: e.to_string(),
+        })
     }
 }
 
@@ -244,16 +261,17 @@ fn build_reqwest_client(config: &ClientConfig) -> Result<Client, LLMError> {
         .danger_accept_invalid_certs(!config.verify_ssl);
     if let Some(proxy) = &config.proxy {
         let scheme = proxy.url.clone();
-        let proxy = reqwest::Proxy::all(&scheme)
-            .map_err(|e| LLMError::Config { message: format!("invalid proxy '{scheme}': {e}") })?;
+        let proxy = reqwest::Proxy::all(&scheme).map_err(|e| LLMError::Config {
+            message: format!("invalid proxy '{scheme}': {e}"),
+        })?;
         builder = builder.proxy(proxy);
     } else {
         // 除非明确要求，否则显式禁用系统代理。
         builder = builder.no_proxy();
     }
-    builder
-        .build()
-        .map_err(|e| LLMError::Config { message: format!("failed to build HTTP client: {e}") })
+    builder.build().map_err(|e| LLMError::Config {
+        message: format!("failed to build HTTP client: {e}"),
+    })
 }
 
 fn error_from_status(raw: &RawHttpResponse) -> Option<LLMError> {
@@ -285,22 +303,40 @@ fn error_from_status(raw: &RawHttpResponse) -> Option<LLMError> {
         ctx = ctx.with_request_id(id);
     }
     Some(match raw.status {
-        401 | 403 => LLMError::Auth { message: body_preview, ctx },
+        401 | 403 => LLMError::Auth {
+            message: body_preview,
+            ctx,
+        },
         429 => LLMError::RateLimit {
             message: body_preview,
             retry_after_ms,
-            ctx: ErrorContext { retryable: true, ..ctx },
+            ctx: ErrorContext {
+                retryable: true,
+                ..ctx
+            },
         },
         408 => LLMError::Timeout {
             elapsed_ms: 0,
-            ctx: ErrorContext { retryable: true, ..ctx },
+            ctx: ErrorContext {
+                retryable: true,
+                ..ctx
+            },
         },
-        413 => LLMError::ContextOverflow { message: body_preview, ctx },
+        413 => LLMError::ContextOverflow {
+            message: body_preview,
+            ctx,
+        },
         500..=599 => LLMError::Provider {
             message: body_preview,
-            ctx: ErrorContext { retryable: true, ..ctx },
+            ctx: ErrorContext {
+                retryable: true,
+                ..ctx
+            },
         },
-        _ => LLMError::Provider { message: body_preview, ctx },
+        _ => LLMError::Provider {
+            message: body_preview,
+            ctx,
+        },
     })
 }
 

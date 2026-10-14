@@ -29,7 +29,10 @@ impl Default for RetryPolicy {
 impl RetryPolicy {
     /// 不重试 —— 测试里想要确定的「只尝试一次」行为时有用。
     pub fn none() -> Self {
-        Self { max_retries: 0, ..Self::default() }
+        Self {
+            max_retries: 0,
+            ..Self::default()
+        }
     }
 
     pub fn should_retry(&self, attempt: u32, err: &LLMError) -> bool {

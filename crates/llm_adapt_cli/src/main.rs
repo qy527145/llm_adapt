@@ -17,7 +17,7 @@ use crate::output::OutputFormat;
 #[command(
     name = "llm-adapt",
     about = "Unified entry point for the llm_adapt LLM API abstraction layer",
-    version,
+    version
 )]
 struct Cli {
     /// 在 stdout 上输出机器可读的 JSON，而非人类可读的散文。

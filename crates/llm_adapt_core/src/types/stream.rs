@@ -76,7 +76,10 @@ impl StreamChunk {
     }
 
     pub fn text(text: impl Into<String>) -> Self {
-        StreamChunk::TextDelta { index: 0, text: text.into() }
+        StreamChunk::TextDelta {
+            index: 0,
+            text: text.into(),
+        }
     }
 }
 
@@ -84,8 +87,15 @@ impl StreamChunk {
 #[derive(Debug, Clone)]
 enum Slot {
     Text(String),
-    Thinking { text: String, signature: String },
-    Tool { id: String, name: String, arguments: String },
+    Thinking {
+        text: String,
+        signature: String,
+    },
+    Tool {
+        id: String,
+        name: String,
+        arguments: String,
+    },
     /// 由 `BlockStart` 直接给定的整块（未建模块、服务端工具活动等）。
     Opaque(Block),
 }
@@ -295,7 +305,10 @@ fn slot_to_block(slot: &Slot) -> Option<Block> {
             if text.is_empty() {
                 None
             } else {
-                Some(Block::Text { text: text.clone(), cache: None })
+                Some(Block::Text {
+                    text: text.clone(),
+                    cache: None,
+                })
             }
         }
         Slot::Thinking { text, signature } => {
@@ -361,7 +374,10 @@ mod tests {
         // 思考 → 文本 → 工具，各自多个分片交错到达
         a.push(&StreamChunk::BlockStart {
             index: 0,
-            block: Block::Thinking { text: String::new(), signature: None },
+            block: Block::Thinking {
+                text: String::new(),
+                signature: None,
+            },
         });
         a.push(&StreamChunk::BlockStart {
             index: 1,
@@ -401,7 +417,9 @@ mod tests {
         }
         assert_eq!(blocks[1], Block::text("hello"), "分片应按 index 归并");
         match &blocks[2] {
-            Block::ToolUse { id, name, input, .. } => {
+            Block::ToolUse {
+                id, name, input, ..
+            } => {
                 assert_eq!(id, "t1");
                 assert_eq!(name, "f");
                 assert_eq!(input["a"], 1);
@@ -442,14 +460,89 @@ mod tests {
         assert_eq!(a.blocks(), vec![Block::text("hi")]);
     }
 
+    /// 流式增量也必须能过 serde —— 它要跨 IPC 送到 UI、也要进流式时间轴。
+    /// 和请求/响应那边同一个道理：serde 表示不合法的块编译期看不出来，
+    /// 只有真去序列化才炸。
+    #[test]
+    fn every_chunk_variant_round_trips() {
+        let chunks = vec![
+            StreamChunk::MessageStart {
+                id: "m".into(),
+                model: "gpt".into(),
+            },
+            StreamChunk::BlockStart {
+                index: 0,
+                block: Block::text(""),
+            },
+            StreamChunk::BlockStart {
+                index: 1,
+                block: Block::Thinking {
+                    text: String::new(),
+                    signature: Some("s".into()),
+                },
+            },
+            StreamChunk::BlockStart {
+                index: 2,
+                block: Block::ToolUse {
+                    id: "t".into(),
+                    name: "f".into(),
+                    input: serde_json::json!({}),
+                    cache: None,
+                },
+            },
+            StreamChunk::BlockStart {
+                index: 3,
+                block: Block::Unmodeled {
+                    raw: serde_json::json!({"type": "web_search_call"}),
+                },
+            },
+            StreamChunk::TextDelta {
+                index: 0,
+                text: "hi".into(),
+            },
+            StreamChunk::ThinkingDelta {
+                index: 1,
+                text: "hmm".into(),
+                signature_delta: Some("sig".into()),
+            },
+            StreamChunk::ToolCallDelta {
+                index: 2,
+                id: "t".into(),
+                name_delta: Some("f".into()),
+                arguments_delta: Some("{}".into()),
+            },
+            StreamChunk::BlockStop { index: 2 },
+            StreamChunk::Usage {
+                usage: Usage::default(),
+            },
+            StreamChunk::Finish {
+                reason: FinishReason::Stop,
+            },
+            StreamChunk::Error {
+                error: "boom".into(),
+            },
+        ];
+        for c in chunks {
+            let json = serde_json::to_string(&c).expect("每个增量变体都必须能序列化");
+            let back: StreamChunk = serde_json::from_str(&json).expect("必须能反序列化");
+            assert_eq!(back, c, "往返后应一模一样：{json}");
+        }
+    }
+
     #[test]
     fn usage_merges_without_zero_overwrite() {
         let mut a = BlockAssembler::new();
         a.push(&StreamChunk::Usage {
-            usage: Usage { input_tokens: 10, ..Default::default() },
+            usage: Usage {
+                input_tokens: 10,
+                ..Default::default()
+            },
         });
         a.push(&StreamChunk::Usage {
-            usage: Usage { output_tokens: 3, ..Default::default() },
+            usage: Usage {
+                output_tokens: 3,
+                ..Default::default()
+            },
         });
         assert_eq!(a.usage().input_tokens, 10);
         assert_eq!(a.usage().output_tokens, 3);

@@ -54,11 +54,9 @@ pub use http::{
 pub use protocol::ir::{
     Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource,
     ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind, ToolResultBlock, ToolResultContent,
-    Usage, UsageSource, WireMessage, WireRequest, WireResponse,
+    ToolSpec, Usage, UsageSource, WireMessage, WireRequest, WireResponse,
 };
-pub use protocol::{
-    decode_stream, Codec, Protocol, ProtocolId, ProtocolRegistry, StreamEncoder,
-};
+pub use protocol::{Codec, Protocol, ProtocolId, ProtocolRegistry, StreamEncoder, decode_stream};
 pub use sse::{ChunkStream, SseChunkStream, SseFrame, SseMapper, SseOutcome};
 pub use types::{
     AssistantBlock, AssistantMessage, BlockAssembler, ChatRequest, ChatResponse, Conversation,

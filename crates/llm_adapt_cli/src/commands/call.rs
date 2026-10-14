@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::commands::config_cmd::pick_profile;
 use crate::config::store;
-use crate::output::{emit_json, OutputFormat};
+use crate::output::{OutputFormat, emit_json};
 
 #[derive(Debug, Args)]
 pub struct CallArgs {
@@ -47,14 +47,19 @@ struct StreamSummary {
 }
 
 pub fn run(args: CallArgs, fmt: OutputFormat) -> Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
     runtime.block_on(async move { run_async(args, fmt).await })
 }
 
 async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
     let settings = store::load()?;
     let (_profile_name, profile) = pick_profile(&settings, args.profile.as_deref())?;
-    let api_format = args.api_format.clone().unwrap_or_else(|| profile.api_format.clone());
+    let api_format = args
+        .api_format
+        .clone()
+        .unwrap_or_else(|| profile.api_format.clone());
     let model = args
         .model
         .clone()
@@ -65,8 +70,12 @@ async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
 
     let conversation = build_conversation(&args);
     let mut req = ChatRequest::new(&model, &api_format, conversation);
-    if let Some(t) = args.temperature { req.temperature = Some(t); }
-    if let Some(m) = args.max_tokens { req.max_tokens = Some(m); }
+    if let Some(t) = args.temperature {
+        req.temperature = Some(t);
+    }
+    if let Some(m) = args.max_tokens {
+        req.max_tokens = Some(m);
+    }
     if req.max_tokens.is_none()
         && ProtocolId::new(&api_format).protocol() == Some(Protocol::Anthropic)
     {
@@ -91,7 +100,11 @@ async fn run_async(args: CallArgs, fmt: OutputFormat) -> Result<()> {
                     }
                     text.push_str(t);
                 }
-                StreamChunk::ThinkingDelta { text: t, signature_delta, .. } => {
+                StreamChunk::ThinkingDelta {
+                    text: t,
+                    signature_delta,
+                    ..
+                } => {
                     thinking.push_str(t);
                     if let Some(s) = signature_delta {
                         thinking_sig.push_str(s);

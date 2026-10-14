@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::commands::config_cmd::pick_profile;
 use crate::config::store;
-use crate::output::{emit_json, OutputFormat};
+use crate::output::{OutputFormat, emit_json};
 
 #[derive(Debug, Args)]
 pub struct PreviewArgs {
@@ -145,7 +145,9 @@ fn output_preview(
             println!("# preview using profile [{profile}]");
             println!("{} {}", method_str(http.method), http.url);
             for (k, v) in &http.headers {
-                let v_shown = if k.eq_ignore_ascii_case("authorization") || k.eq_ignore_ascii_case("x-api-key") {
+                let v_shown = if k.eq_ignore_ascii_case("authorization")
+                    || k.eq_ignore_ascii_case("x-api-key")
+                {
                     crate::config::mask_secret(v)
                 } else {
                     v.clone()
@@ -170,7 +172,11 @@ fn method_str(m: HttpMethod) -> &'static str {
 }
 
 fn to_curl(http: &HttpRequest) -> String {
-    let mut s = format!("curl -X {} {}", method_str(http.method), shell_quote(&http.url));
+    let mut s = format!(
+        "curl -X {} {}",
+        method_str(http.method),
+        shell_quote(&http.url)
+    );
     for (k, v) in &http.headers {
         s.push_str(&format!(" \\\n  -H {}", shell_quote(&format!("{k}: {v}"))));
     }

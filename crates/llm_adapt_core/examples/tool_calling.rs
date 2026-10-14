@@ -35,16 +35,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 第一轮 —— 预期会返回一次工具调用。
     let resp = client.chat(&request).await?;
-    assert_eq!(resp.finish_reason, FinishReason::ToolCall, "expected a tool call");
+    assert_eq!(
+        resp.finish_reason,
+        FinishReason::ToolCall,
+        "expected a tool call"
+    );
 
     let (tool_id, tool_name, args_str) = resp
         .message
         .blocks
         .iter()
         .find_map(|b| match b {
-            AssistantBlock::ToolCall { id, name, arguments, .. } => {
-                Some((id.clone(), name.clone(), arguments.clone()))
-            }
+            AssistantBlock::ToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            } => Some((id.clone(), name.clone(), arguments.clone())),
             _ => None,
         })
         .expect("no tool call in response");
@@ -58,7 +65,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tool_turn = UserMessage::default();
     tool_turn.push(UserBlock::ToolResult {
         call_id: tool_id,
-        content: ToolResultContent::Json(json!({"temperature_c": 22, "condition": "Sunny"})),
+        content: ToolResultContent::Json {
+            value: json!({"temperature_c": 22, "condition": "Sunny"}),
+        },
         is_error: false,
         cache: None,
     });

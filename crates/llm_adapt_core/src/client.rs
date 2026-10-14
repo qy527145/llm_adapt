@@ -14,11 +14,13 @@ use std::time::Instant;
 
 use crate::capability::{ModelCapabilities, ModelCapabilityTable};
 use crate::error::LLMError;
-use crate::http::{ClientConfig, HttpExecutor, HttpRequest, RawHttpResponse, RetryPolicy};
+use crate::http::{
+    ClientConfig, HttpExecutor, HttpRequest, RawHttpResponse, RequestHook, RetryPolicy,
+};
 use crate::protocol::ir::{WireRequest, WireResponse};
-use crate::protocol::{decode_stream, Codec, ProtocolId, ProtocolRegistry};
+use crate::protocol::{Codec, ProtocolId, ProtocolRegistry, decode_stream};
 use crate::sse::ChunkStream;
-use crate::types::{lift_request, lower_response, ChatRequest, ChatResponse};
+use crate::types::{ChatRequest, ChatResponse, lift_request, lower_response};
 
 /// 面向应用的客户端。克隆开销很小（内部都是 Arc）。
 #[derive(Clone)]
@@ -34,6 +36,7 @@ pub struct LLMClientBuilder {
     registry: ProtocolRegistry,
     capabilities: ModelCapabilityTable,
     retry: RetryPolicy,
+    hooks: Vec<Arc<dyn RequestHook>>,
     install_defaults: bool,
 }
 
@@ -44,6 +47,7 @@ impl LLMClient {
             registry: ProtocolRegistry::new(),
             capabilities: ModelCapabilityTable::with_defaults(),
             retry: RetryPolicy::default(),
+            hooks: Vec::new(),
             install_defaults: true,
         }
     }
@@ -71,8 +75,7 @@ impl LLMClient {
     }
 
     pub fn lookup_capabilities(&self, request: &ChatRequest) -> ModelCapabilities {
-        self.capabilities
-            .get(&request.api_format, &request.model)
+        self.capabilities.get(&request.api_format, &request.model)
     }
 
     // ------------------------------------------------------------------
@@ -192,6 +195,15 @@ impl LLMClientBuilder {
         self
     }
 
+    /// 挂一个请求钩子。按注册顺序触发。
+    ///
+    /// 只能在 build 之前挂：executor 一旦被 `Arc` 包起来就改不动了，
+    /// 而这个顺序正好逼着调用方把「抓包」这类横切关注点在装配期一次配齐。
+    pub fn hook(mut self, hook: Arc<dyn RequestHook>) -> Self {
+        self.hooks.push(hook);
+        self
+    }
+
     pub fn config(mut self, config: ClientConfig) -> Self {
         self.config = config;
         self
@@ -201,7 +213,10 @@ impl LLMClientBuilder {
         if self.install_defaults {
             crate::protocol::register_defaults(&self.registry);
         }
-        let executor = HttpExecutor::with_retry(self.config, self.retry)?;
+        let mut executor = HttpExecutor::with_retry(self.config, self.retry)?;
+        for h in self.hooks {
+            executor.add_hook(h);
+        }
         Ok(LLMClient {
             registry: self.registry,
             executor: Arc::new(executor),

@@ -24,7 +24,10 @@ pub struct ErrorContext {
 
 impl ErrorContext {
     pub fn retryable() -> Self {
-        Self { retryable: true, ..Self::default() }
+        Self {
+            retryable: true,
+            ..Self::default()
+        }
     }
 
     pub fn with_status(mut self, status: u16) -> Self {
@@ -123,23 +126,35 @@ impl LLMError {
     }
 
     pub fn config(msg: impl fmt::Display) -> Self {
-        LLMError::Config { message: msg.to_string() }
+        LLMError::Config {
+            message: msg.to_string(),
+        }
     }
 
     pub fn validation(msg: impl fmt::Display) -> Self {
-        LLMError::Validation { message: msg.to_string() }
+        LLMError::Validation {
+            message: msg.to_string(),
+        }
     }
 
     pub fn parse(msg: impl fmt::Display) -> Self {
-        LLMError::Parse { message: msg.to_string(), ctx: ErrorContext::default() }
+        LLMError::Parse {
+            message: msg.to_string(),
+            ctx: ErrorContext::default(),
+        }
     }
 
     pub fn provider(msg: impl fmt::Display) -> Self {
-        LLMError::Provider { message: msg.to_string(), ctx: ErrorContext::default() }
+        LLMError::Provider {
+            message: msg.to_string(),
+            ctx: ErrorContext::default(),
+        }
     }
 
     pub fn unsupported(msg: impl fmt::Display) -> Self {
-        LLMError::Unsupported { message: msg.to_string() }
+        LLMError::Unsupported {
+            message: msg.to_string(),
+        }
     }
 }
 
@@ -163,7 +178,10 @@ impl From<reqwest::Error> for LLMError {
         if err.is_timeout() {
             LLMError::Timeout { elapsed_ms: 0, ctx }
         } else {
-            LLMError::Network { message: err.to_string(), ctx }
+            LLMError::Network {
+                message: err.to_string(),
+                ctx,
+            }
         }
     }
 }

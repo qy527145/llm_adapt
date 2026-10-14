@@ -8,15 +8,14 @@
 
 use bytes::Bytes;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::{ErrorContext, LLMError};
 use crate::http::{ClientConfig, HttpMethod, HttpRequest};
 use crate::protocol::codec::Codec;
 use crate::protocol::ir::{
-    Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource,
-    Protocol, ProtocolId, ToolChoice, ToolResultBlock, ToolResultContent, Usage, WireRequest,
-    WireResponse,
+    Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource, Protocol,
+    ProtocolId, ToolChoice, ToolResultBlock, ToolResultContent, Usage, WireRequest, WireResponse,
 };
 use crate::sse::{SseFrame, SseMapper, SseOutcome};
 use crate::types::StreamChunk;
@@ -113,9 +112,7 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
         body.insert("stop_sequences".into(), json!(request.stop));
     }
     if let Some(thinking) = &request.thinking {
-        let budget = thinking
-            .budget_tokens
-            .unwrap_or(DEFAULT_THINKING_BUDGET);
+        let budget = thinking.budget_tokens.unwrap_or(DEFAULT_THINKING_BUDGET);
         body.insert(
             "thinking".into(),
             json!({"type": "enabled", "budget_tokens": budget}),
@@ -186,11 +183,7 @@ fn system_to_wire(blocks: &[Block]) -> Option<Value> {
 
     if !texts.iter().any(|(_, c)| c.is_some()) {
         // 换行拼接：见 `WireRequest::system_text` 的说明，三协议必须一致。
-        let joined = texts
-            .iter()
-            .map(|(t, _)| *t)
-            .collect::<Vec<_>>()
-            .join("\n");
+        let joined = texts.iter().map(|(t, _)| *t).collect::<Vec<_>>().join("\n");
         if joined.is_empty() {
             return None;
         }
@@ -232,12 +225,12 @@ fn image_source_to_wire(source: &ImageSource) -> Value {
 
 fn tool_result_content_to_wire(content: &ToolResultContent) -> Value {
     match content {
-        ToolResultContent::Text(s) => json!(s),
-        ToolResultContent::Json(v) => {
+        ToolResultContent::Text { text: s } => json!(s),
+        ToolResultContent::Json { value: v } => {
             // Anthropic 接受一个 text 块，正文是序列化后的 JSON。
             json!([{"type": "text", "text": v.to_string()}])
         }
-        ToolResultContent::Blocks(blocks) => Value::Array(
+        ToolResultContent::Blocks { blocks } => Value::Array(
             blocks
                 .iter()
                 .map(|b| match b {
@@ -672,10 +665,7 @@ mod tests {
         );
         let cc = &sys[0]["cache_control"];
         assert_eq!(cc["type"], "ephemeral");
-        assert!(
-            cc.get("ttl").is_none(),
-            "5m 是默认档，不应出现 ttl 字段"
-        );
+        assert!(cc.get("ttl").is_none(), "5m 是默认档，不应出现 ttl 字段");
     }
 
     #[test]
@@ -792,15 +782,17 @@ mod tests {
         let mut user = UserMessage::default();
         user.push(crate::types::UserBlock::ToolResult {
             call_id: "t1".into(),
-            content: ToolResultContent::Blocks(vec![
-                ToolResultBlock::Text {
-                    text: "Tokyo".into(),
-                },
-                ToolResultBlock::Image {
-                    url: "https://x/y.png".into(),
-                    detail: None,
-                },
-            ]),
+            content: ToolResultContent::Blocks {
+                blocks: vec![
+                    ToolResultBlock::Text {
+                        text: "Tokyo".into(),
+                    },
+                    ToolResultBlock::Image {
+                        url: "https://x/y.png".into(),
+                        detail: None,
+                    },
+                ],
+            },
             is_error: false,
             cache: None,
         });
@@ -824,7 +816,8 @@ mod tests {
         let mut ir = WireRequest::new("claude");
         ir.max_tokens = Some(16);
         ir.extra.insert("top_k".into(), json!(42));
-        ir.extra.insert("service_tier".into(), json!("standard_only"));
+        ir.extra
+            .insert("service_tier".into(), json!("standard_only"));
         // extra 不能盖掉建模字段
         ir.extra.insert("model".into(), json!("hijacked"));
         let http = AnthropicCodec.encode_request(&ir, &cfg()).unwrap();

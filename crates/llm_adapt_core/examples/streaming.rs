@@ -23,8 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ChatRequest::anthropic("claude-3-5-haiku-20241022", conv),
         ),
     };
-    let api_key = std::env::var(key_var)
-        .unwrap_or_else(|_| panic!("set {key_var} or OPENAI_API_KEY"));
+    let api_key =
+        std::env::var(key_var).unwrap_or_else(|_| panic!("set {key_var} or OPENAI_API_KEY"));
     request.stream = true;
 
     let client = LLMClient::new(ClientConfig::new(base_url, api_key))?;

@@ -5,7 +5,7 @@ use clap::Subcommand;
 use llm_adapt_core::{ModelCapabilityTable, ProtocolRegistry};
 use serde::Serialize;
 
-use crate::output::{emit_json, OutputFormat};
+use crate::output::{OutputFormat, emit_json};
 
 #[derive(Debug, Subcommand)]
 pub enum HandlersCmd {

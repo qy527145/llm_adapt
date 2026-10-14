@@ -14,7 +14,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 给 system prompt 打上缓存标记，演示逐块标记的用法。
     let conv = Conversation {
-        system: Some(SystemPrompt::text("You are concise.").with_cache(CacheMarker::ephemeral_5m())),
+        system: Some(
+            SystemPrompt::text("You are concise.").with_cache(CacheMarker::ephemeral_5m()),
+        ),
         turns: vec![Turn::User(UserMessage::text(
             "Summarise the difference between Rust's `&str` and `String` in one sentence.",
         ))],

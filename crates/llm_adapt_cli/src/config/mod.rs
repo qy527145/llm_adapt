@@ -24,7 +24,9 @@ pub struct Settings {
     pub web_port: u16,
 }
 
-fn default_web_port() -> u16 { 8787 }
+fn default_web_port() -> u16 {
+    8787
+}
 
 impl Settings {
     /// 返回 active profile（若只有一个，就返回那一个）。
@@ -66,11 +68,21 @@ pub struct Profile {
     pub default_headers: BTreeMap<String, String>,
 }
 
-fn default_api_format() -> String { "openai_compat".into() }
-fn default_connect_secs() -> u64 { 10 }
-fn default_request_secs() -> u64 { 60 }
-fn default_stream_secs() -> u64 { 60 }
-fn default_true() -> bool { true }
+fn default_api_format() -> String {
+    "openai_compat".into()
+}
+fn default_connect_secs() -> u64 {
+    10
+}
+fn default_request_secs() -> u64 {
+    60
+}
+fn default_stream_secs() -> u64 {
+    60
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for Profile {
     fn default() -> Self {
@@ -145,6 +157,13 @@ pub fn mask_secret(s: &str) -> String {
     if s.len() <= 8 {
         return "*".repeat(s.len());
     }
-    let tail: String = s.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+    let tail: String = s
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     format!("{}…{}", &s[..2], tail)
 }

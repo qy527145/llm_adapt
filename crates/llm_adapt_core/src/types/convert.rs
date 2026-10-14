@@ -14,7 +14,9 @@ use crate::protocol::ir::{
     WireResponse,
 };
 
-use super::conversation::{AssistantBlock, AssistantMessage, SystemBlock, SystemPrompt, Turn, UserBlock};
+use super::conversation::{
+    AssistantBlock, AssistantMessage, SystemBlock, SystemPrompt, Turn, UserBlock,
+};
 use super::request::ChatRequest;
 use super::response::ChatResponse;
 use super::tool::ToolDefinition;
@@ -67,10 +69,9 @@ fn lift_system(system: &SystemPrompt) -> Vec<Block> {
 
 fn lift_turn(turn: &Turn) -> WireMessage {
     match turn {
-        Turn::User(msg) => WireMessage::new(
-            Role::User,
-            msg.blocks.iter().map(lift_user_block).collect(),
-        ),
+        Turn::User(msg) => {
+            WireMessage::new(Role::User, msg.blocks.iter().map(lift_user_block).collect())
+        }
         Turn::Assistant(msg) => WireMessage::new(
             Role::Assistant,
             msg.blocks.iter().map(lift_assistant_block).collect(),
@@ -170,9 +171,7 @@ pub fn lower_response(resp: WireResponse) -> ChatResponse {
 fn lower_block(b: Block) -> Option<AssistantBlock> {
     match b {
         Block::Text { text, .. } => Some(AssistantBlock::Text { text, cache: None }),
-        Block::Thinking { text, signature } => {
-            Some(AssistantBlock::Thinking { text, signature })
-        }
+        Block::Thinking { text, signature } => Some(AssistantBlock::Thinking { text, signature }),
         Block::ToolUse {
             id, name, input, ..
         } => Some(AssistantBlock::ToolCall {
@@ -220,7 +219,11 @@ mod tests {
         req.stop_sequences = vec!["END".into()];
         req.enable_thinking = true;
         req.thinking_budget = Some(2048);
-        req.tools = vec![ToolDefinition::new("f", "d", serde_json::json!({"type": "object"}))];
+        req.tools = vec![ToolDefinition::new(
+            "f",
+            "d",
+            serde_json::json!({"type": "object"}),
+        )];
 
         let ir = lift_request(&req);
         assert_eq!(ir.model, "claude");
@@ -228,12 +231,18 @@ mod tests {
         assert_eq!(ir.seed, Some(7));
         assert_eq!(ir.stop, vec!["END".to_string()]);
         assert_eq!(ir.system.len(), 1);
-        assert_eq!(ir.system[0], Block::text_cached("sys", CacheMarker::ephemeral_1h()));
+        assert_eq!(
+            ir.system[0],
+            Block::text_cached("sys", CacheMarker::ephemeral_1h())
+        );
         assert_eq!(ir.tools.len(), 1);
         assert!(ir.tools[0].is_function());
         assert_eq!(
             ir.thinking,
-            Some(ThinkingConfig { budget_tokens: Some(2048), effort: None })
+            Some(ThinkingConfig {
+                budget_tokens: Some(2048),
+                effort: None
+            })
         );
     }
 
@@ -264,7 +273,10 @@ mod tests {
             Block::Image { source, detail, .. } => {
                 assert_eq!(
                     *source,
-                    ImageSource::Base64 { media_type: "image/png".into(), data: "AAAB".into() }
+                    ImageSource::Base64 {
+                        media_type: "image/png".into(),
+                        data: "AAAB".into()
+                    }
                 );
                 assert_eq!(detail.as_deref(), Some("high"));
             }
@@ -279,14 +291,18 @@ mod tests {
         // 裸字符串形态
         user.push(UserBlock::ToolResult {
             call_id: "t1".into(),
-            content: ToolResultContent::Text("plain".into()),
+            content: ToolResultContent::Text {
+                text: "plain".into(),
+            },
             is_error: true,
             cache: None,
         });
         // 块数组形态
         user.push(UserBlock::ToolResult {
             call_id: "t2".into(),
-            content: ToolResultContent::Blocks(vec![ToolResultBlock::Text { text: "x".into() }]),
+            content: ToolResultContent::Blocks {
+                blocks: vec![ToolResultBlock::Text { text: "x".into() }],
+            },
             is_error: false,
             cache: None,
         });
@@ -301,8 +317,14 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(matches!(shapes[0], ToolResultContent::Text(_)), "裸字符串形态必须保留");
-        assert!(matches!(shapes[1], ToolResultContent::Blocks(_)), "块数组形态必须保留");
+        assert!(
+            matches!(shapes[0], ToolResultContent::Text { .. }),
+            "裸字符串形态必须保留"
+        );
+        assert!(
+            matches!(shapes[1], ToolResultContent::Blocks { .. }),
+            "块数组形态必须保留"
+        );
     }
 
     #[test]
@@ -313,7 +335,10 @@ mod tests {
             id: Some("r1".into()),
             model: Some("gpt".into()),
             content: vec![
-                Block::Thinking { text: "hmm".into(), signature: Some("sig".into()) },
+                Block::Thinking {
+                    text: "hmm".into(),
+                    signature: Some("sig".into()),
+                },
                 Block::text("hello"),
                 Block::ToolUse {
                     id: "t1".into(),
@@ -321,7 +346,9 @@ mod tests {
                     input: serde_json::json!({"a": 1}),
                     cache: None,
                 },
-                Block::Unmodeled { raw: serde_json::json!({"type": "web_search_call"}) },
+                Block::Unmodeled {
+                    raw: serde_json::json!({"type": "web_search_call"}),
+                },
             ],
             finish_reason: FinishReason::ToolCall,
             usage: Default::default(),

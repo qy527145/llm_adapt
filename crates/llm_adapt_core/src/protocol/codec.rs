@@ -128,9 +128,12 @@ impl ProtocolRegistry {
     /// 取一个 codec。未注册时报 [`LLMError::HandlerNotFound`]。
     pub fn get(&self, id: &ProtocolId) -> Result<Arc<dyn Codec>, LLMError> {
         let guard = self.inner.read().expect("ProtocolRegistry 锁中毒");
-        guard.get(id).cloned().ok_or_else(|| LLMError::HandlerNotFound {
-            api_format: id.to_string(),
-        })
+        guard
+            .get(id)
+            .cloned()
+            .ok_or_else(|| LLMError::HandlerNotFound {
+                api_format: id.to_string(),
+            })
     }
 
     /// 是否已注册。

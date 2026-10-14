@@ -213,11 +213,15 @@ pub struct CacheMarker {
 
 impl CacheMarker {
     pub fn ephemeral_5m() -> Self {
-        Self { ttl: CacheTtl::Ephemeral5m }
+        Self {
+            ttl: CacheTtl::Ephemeral5m,
+        }
     }
 
     pub fn ephemeral_1h() -> Self {
-        Self { ttl: CacheTtl::Ephemeral1h }
+        Self {
+            ttl: CacheTtl::Ephemeral1h,
+        }
     }
 }
 
@@ -255,7 +259,9 @@ impl ImageSource {
                 };
             }
         }
-        ImageSource::Url { url: url.to_string() }
+        ImageSource::Url {
+            url: url.to_string(),
+        }
     }
 
     pub fn media_type(&self) -> Option<&str> {
@@ -274,28 +280,34 @@ impl ImageSource {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ToolResultContent {
     /// 纯文本——所有厂商都接受。
-    Text(String),
+    ///
+    /// **必须是结构体变体而不是 `Text(String)`。** serde 的内部标签（`tag = "kind"`）
+    /// 不支持「标签 + newtype 变体」的组合：序列化时会在运行时直接报
+    /// `cannot serialize tagged newtype variant ... containing a string`，
+    /// 也就是任何带工具结果的请求都存不下、传不出去。这类错误编译期看不出来，
+    /// 只有真去序列化才会炸 —— 所以下面配了一个整请求往返的测试守它。
+    Text { text: String },
     /// 结构化 JSON。不认结构化的厂商会拿到序列化后的字符串。
-    Json(serde_json::Value),
+    Json { value: serde_json::Value },
     /// 多模态块。Anthropic 原生接受；OpenAI 降级成拼接文本（图片丢弃并告警）。
-    Blocks(Vec<ToolResultBlock>),
+    Blocks { blocks: Vec<ToolResultBlock> },
 }
 
 impl ToolResultContent {
     pub fn text(s: impl Into<String>) -> Self {
-        ToolResultContent::Text(s.into())
+        ToolResultContent::Text { text: s.into() }
     }
 
     pub fn json(value: serde_json::Value) -> Self {
-        ToolResultContent::Json(value)
+        ToolResultContent::Json { value }
     }
 
     /// 只看文本部分。用于降级到纯文本的协议。
     pub fn as_text(&self) -> String {
         match self {
-            ToolResultContent::Text(s) => s.clone(),
-            ToolResultContent::Json(v) => v.to_string(),
-            ToolResultContent::Blocks(blocks) => blocks
+            ToolResultContent::Text { text } => text.clone(),
+            ToolResultContent::Json { value } => value.to_string(),
+            ToolResultContent::Blocks { blocks } => blocks
                 .iter()
                 .filter_map(|b| match b {
                     ToolResultBlock::Text { text } => Some(text.as_str()),
@@ -309,7 +321,7 @@ impl ToolResultContent {
     /// 多模态块里被丢弃的图片数量（降级时用来告警）。
     pub fn dropped_image_count(&self) -> usize {
         match self {
-            ToolResultContent::Blocks(blocks) => blocks
+            ToolResultContent::Blocks { blocks } => blocks
                 .iter()
                 .filter(|b| matches!(b, ToolResultBlock::Image { .. }))
                 .count(),
@@ -322,7 +334,9 @@ impl ToolResultContent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultBlock {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     Image {
         url: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -382,11 +396,17 @@ pub enum Block {
 
 impl Block {
     pub fn text(s: impl Into<String>) -> Self {
-        Block::Text { text: s.into(), cache: None }
+        Block::Text {
+            text: s.into(),
+            cache: None,
+        }
     }
 
     pub fn text_cached(s: impl Into<String>, cache: CacheMarker) -> Self {
-        Block::Text { text: s.into(), cache: Some(cache) }
+        Block::Text {
+            text: s.into(),
+            cache: Some(cache),
+        }
     }
 
     pub fn as_text(&self) -> Option<&str> {
@@ -402,7 +422,9 @@ impl Block {
 
     pub fn as_tool_use(&self) -> Option<(&str, &str, &serde_json::Value)> {
         match self {
-            Block::ToolUse { id, name, input, .. } => Some((id, name, input)),
+            Block::ToolUse {
+                id, name, input, ..
+            } => Some((id, name, input)),
             _ => None,
         }
     }
@@ -651,7 +673,9 @@ pub enum FinishReason {
     Safety,
     StopSequence,
     /// 各家协议的其它取值，原样保留以免丢信息。
-    Other { value: String },
+    Other {
+        value: String,
+    },
 }
 
 impl FinishReason {
@@ -662,7 +686,9 @@ impl FinishReason {
             "length" | "max_tokens" | "max_output_tokens" => FinishReason::Length,
             "tool_calls" | "tool_use" | "function_call" => FinishReason::ToolCall,
             "content_filter" | "refusal" | "safety" => FinishReason::Safety,
-            other => FinishReason::Other { value: other.to_string() },
+            other => FinishReason::Other {
+                value: other.to_string(),
+            },
         }
     }
 
@@ -670,7 +696,9 @@ impl FinishReason {
     pub fn parse_opt(s: Option<&str>) -> Self {
         match s {
             Some(s) => Self::parse(s),
-            None => FinishReason::Other { value: String::new() },
+            None => FinishReason::Other {
+                value: String::new(),
+            },
         }
     }
 
@@ -731,10 +759,7 @@ impl WireResponse {
 
     /// 按出现顺序取出全部工具调用。
     pub fn tool_uses(&self) -> Vec<(&str, &str, &serde_json::Value)> {
-        self.content
-            .iter()
-            .filter_map(Block::as_tool_use)
-            .collect()
+        self.content.iter().filter_map(Block::as_tool_use).collect()
     }
 }
 
@@ -833,8 +858,15 @@ impl Usage {
         self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
         self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
         self.thinking_tokens = self.thinking_tokens.saturating_add(other.thinking_tokens);
-        self.cache.read_tokens = self.cache.read_tokens.saturating_add(other.cache.read_tokens);
-        self.cache.write.total = self.cache.write.total.saturating_add(other.cache.write.total);
+        self.cache.read_tokens = self
+            .cache
+            .read_tokens
+            .saturating_add(other.cache.read_tokens);
+        self.cache.write.total = self
+            .cache
+            .write
+            .total
+            .saturating_add(other.cache.write.total);
         self.cache.write.ephemeral_5m = self
             .cache
             .write
@@ -856,7 +888,10 @@ mod tests {
     #[test]
     fn protocol_json_name_matches_as_str() {
         for p in Protocol::ALL {
-            assert_eq!(serde_json::to_string(&p).unwrap(), format!("\"{}\"", p.as_str()));
+            assert_eq!(
+                serde_json::to_string(&p).unwrap(),
+                format!("\"{}\"", p.as_str())
+            );
             assert_eq!(
                 serde_json::from_str::<Protocol>(&format!("\"{}\"", p.as_str())).unwrap(),
                 p
@@ -889,7 +924,10 @@ mod tests {
         }
         // 表外的自定义协议原样保留（仅小写化）
         assert_eq!(ProtocolId::new("My_Vendor_V1").as_str(), "my_vendor_v1");
-        assert_eq!(ProtocolId::from_raw("My_Vendor_V1").as_str(), "My_Vendor_V1");
+        assert_eq!(
+            ProtocolId::from_raw("My_Vendor_V1").as_str(),
+            "My_Vendor_V1"
+        );
     }
 
     #[test]
@@ -912,7 +950,10 @@ mod tests {
             assert_eq!(v[k], serde_json::json!([]), "{k} 必须是显式空数组");
         }
         let msg = WireMessage::new(Role::User, vec![]);
-        assert_eq!(serde_json::to_value(&msg).unwrap()["content"], serde_json::json!([]));
+        assert_eq!(
+            serde_json::to_value(&msg).unwrap()["content"],
+            serde_json::json!([])
+        );
     }
 
     #[test]
@@ -930,7 +971,10 @@ mod tests {
                       "stop":[],"top_k":42,"service_tier":"flex"}"#;
         let req: WireRequest = serde_json::from_str(raw).unwrap();
         assert_eq!(req.extra.get("top_k"), Some(&serde_json::json!(42)));
-        assert_eq!(req.extra.get("service_tier"), Some(&serde_json::json!("flex")));
+        assert_eq!(
+            req.extra.get("service_tier"),
+            Some(&serde_json::json!("flex"))
+        );
         // 重新编码后它们仍在
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v["top_k"], 42);
@@ -941,10 +985,17 @@ mod tests {
     #[test]
     fn system_segments_join_with_newlines() {
         let mut req = WireRequest::new("m");
-        req.system = vec![Block::text("人设"), Block::text("技能"), Block::text("记忆")];
-        assert_eq!(req.system_text(), "人设
+        req.system = vec![
+            Block::text("人设"),
+            Block::text("技能"),
+            Block::text("记忆"),
+        ];
+        assert_eq!(
+            req.system_text(),
+            "人设
 技能
-记忆");
+记忆"
+        );
         assert_eq!(WireRequest::new("m").system_text(), "");
     }
 
@@ -953,18 +1004,165 @@ mod tests {
         let src = ImageSource::from_url("data:image/png;base64,AAAB");
         assert_eq!(
             src,
-            ImageSource::Base64 { media_type: "image/png".into(), data: "AAAB".into() }
+            ImageSource::Base64 {
+                media_type: "image/png".into(),
+                data: "AAAB".into()
+            }
         );
         assert_eq!(src.to_url(), "data:image/png;base64,AAAB");
         let url = ImageSource::from_url("https://x/y.png");
-        assert_eq!(url, ImageSource::Url { url: "https://x/y.png".into() });
+        assert_eq!(
+            url,
+            ImageSource::Url {
+                url: "https://x/y.png".into()
+            }
+        );
         assert_eq!(url.to_url(), "https://x/y.png");
+    }
+
+    /// **整请求 / 整响应往返。** 这条测试的意义不在于「值相等」，而在于
+    /// 序列化路径真的能跑通 —— IR 里任何一个块只要 serde 表示不合法，
+    /// 就会在这里炸出来（例如内部标签 + newtype 变体那种组合，编译期完全看不出来）。
+    #[test]
+    fn full_request_and_response_round_trip() {
+        let mut req = WireRequest::new("m");
+        req.system = vec![Block::text("sys")];
+        req.messages = vec![
+            WireMessage::user_text("hi"),
+            WireMessage::new(
+                Role::Assistant,
+                vec![
+                    Block::Thinking {
+                        text: "hmm".into(),
+                        signature: Some("sig".into()),
+                    },
+                    Block::text("let me look"),
+                    Block::ToolUse {
+                        id: "t1".into(),
+                        name: "read".into(),
+                        input: serde_json::json!({"path": "a.rs"}),
+                        cache: None,
+                    },
+                ],
+            ),
+            WireMessage::new(
+                Role::User,
+                vec![
+                    Block::ToolResult {
+                        tool_use_id: "t1".into(),
+                        content: ToolResultContent::text("contents"),
+                        is_error: false,
+                        cache: None,
+                    },
+                    Block::ToolResult {
+                        tool_use_id: "t2".into(),
+                        content: ToolResultContent::json(serde_json::json!({"ok": true})),
+                        is_error: true,
+                        cache: Some(CacheMarker::ephemeral_5m()),
+                    },
+                    Block::ToolResult {
+                        tool_use_id: "t3".into(),
+                        content: ToolResultContent::Blocks {
+                            blocks: vec![
+                                ToolResultBlock::Text { text: "x".into() },
+                                ToolResultBlock::Image {
+                                    url: "https://x/y.png".into(),
+                                    detail: None,
+                                },
+                            ],
+                        },
+                        is_error: false,
+                        cache: None,
+                    },
+                ],
+            ),
+            WireMessage::new(
+                Role::User,
+                vec![
+                    Block::Image {
+                        source: ImageSource::Base64 {
+                            media_type: "image/png".into(),
+                            data: "AA".into(),
+                        },
+                        detail: Some("high".into()),
+                        cache: None,
+                    },
+                    Block::RedactedThinking { data: "enc".into() },
+                    Block::Unmodeled {
+                        raw: serde_json::json!({"type": "web_search_call"}),
+                    },
+                ],
+            ),
+        ];
+        req.tools
+            .push(ToolSpec::function("f", "d", serde_json::json!({})));
+        req.thinking = Some(ThinkingConfig {
+            budget_tokens: Some(1024),
+            effort: None,
+        });
+        req.response_format = ResponseFormat::Json;
+        req.tool_choice = ToolChoice::Specific { name: "f".into() };
+        req.extra.insert("store".into(), serde_json::json!(false));
+
+        let json = serde_json::to_string(&req).expect("请求必须能序列化");
+        let back: WireRequest = serde_json::from_str(&json).expect("请求必须能反序列化");
+        assert_eq!(back, req);
+
+        let mut resp = WireResponse {
+            id: Some("r".into()),
+            model: Some("m".into()),
+            content: vec![
+                Block::text("done"),
+                Block::Thinking {
+                    text: "t".into(),
+                    signature: None,
+                },
+                Block::ToolUse {
+                    id: "t9".into(),
+                    name: "f".into(),
+                    input: serde_json::json!({}),
+                    cache: None,
+                },
+                Block::Unmodeled {
+                    raw: serde_json::json!({"type": "message", "x": 1}),
+                },
+            ],
+            finish_reason: FinishReason::Other {
+                value: "pause_turn".into(),
+            },
+            usage: Usage {
+                input_tokens: 1,
+                output_tokens: 2,
+                thinking_tokens: 3,
+                cache: CacheUsage {
+                    read_tokens: 4,
+                    write: CacheWriteUsage {
+                        total: 5,
+                        ephemeral_5m: 5,
+                        ephemeral_1h: 0,
+                    },
+                },
+                ..Default::default()
+            },
+            extra: IndexMap::new(),
+        };
+        resp.extra
+            .insert("status".into(), serde_json::json!("completed"));
+        let json = serde_json::to_string(&resp).expect("响应必须能序列化");
+        let back: WireResponse = serde_json::from_str(&json).expect("响应必须能反序列化");
+        assert_eq!(back, resp);
     }
 
     #[test]
     fn usage_merge_never_overwrites_with_zero() {
-        let mut acc = Usage { input_tokens: 10, ..Default::default() };
-        acc.merge_non_zero(&Usage { output_tokens: 5, ..Default::default() });
+        let mut acc = Usage {
+            input_tokens: 10,
+            ..Default::default()
+        };
+        acc.merge_non_zero(&Usage {
+            output_tokens: 5,
+            ..Default::default()
+        });
         assert_eq!(acc.input_tokens, 10, "零值不得覆盖已有的正数");
         assert_eq!(acc.output_tokens, 5);
     }
@@ -975,12 +1173,17 @@ mod tests {
         assert_eq!(FinishReason::parse("tool_use"), FinishReason::ToolCall);
         assert_eq!(
             FinishReason::parse("pause_turn"),
-            FinishReason::Other { value: "pause_turn".into() }
+            FinishReason::Other {
+                value: "pause_turn".into()
+            }
         );
         assert_eq!(FinishReason::Stop.to_wire(Protocol::Anthropic), "end_turn");
         assert_eq!(FinishReason::Stop.to_wire(Protocol::OpenAiChat), "stop");
         assert_eq!(
-            FinishReason::Other { value: "pause_turn".into() }.to_wire(Protocol::Anthropic),
+            FinishReason::Other {
+                value: "pause_turn".into()
+            }
+            .to_wire(Protocol::Anthropic),
             "pause_turn"
         );
     }
