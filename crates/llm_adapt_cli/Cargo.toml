@@ -16,7 +16,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-llm_adapt_core = { path = "../llm_adapt_core" }
+llm_adapt_core    = { workspace = true }
 clap               = { workspace = true }
 tokio              = { workspace = true }
 serde              = { workspace = true }
