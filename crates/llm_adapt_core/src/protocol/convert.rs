@@ -244,6 +244,7 @@ mod tests {
     use crate::http::ByteStream;
     use crate::protocol::codec::decode_stream;
     use crate::protocol::codec::Codec;
+    use crate::protocol::anthropic::AnthropicCodec;
     use crate::protocol::oai_chat::OpenAiChatCodec;
     use crate::protocol::oai_responses::OpenAiResponsesCodec;
     use crate::protocol::register_defaults;
@@ -683,6 +684,35 @@ mod tests {
                 assert_eq!(id, "tu_1");
                 assert_eq!(name, "search");
                 assert_eq!(input["q"], "x");
+            }
+            other => panic!("期望 tool_use，得到 {other:?}"),
+        }
+    }
+
+    /// OpenAI → Anthropic 的流式工具调用：名字只出现一次。
+    ///
+    /// 网关这一侧本来就没坏（anthropic 编码器在 `BlockStart` 那一拍就把
+    /// `content_block_start` 发出去了，后面的 `name_delta` 追加改的是已经发完的副本），
+    /// 但它和坏掉的那条路**共用同一个源 mapper 的输出**。mapper 少发一个重复分片
+    /// （见 `oai_chat::OpenAiSseMapper`）之后，这条转换必须仍然正确 —— 所以拿它当护栏。
+    #[tokio::test]
+    async fn stream_tool_call_name_is_not_doubled_in_openai_to_anthropic() {
+        let sse = "data: {\"id\":\"c1\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"\"}}]}}]}\n\n\
+            data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}}]}\n\n\
+            data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n\
+            data: [DONE]\n\n";
+        let c = converter();
+        let frames = c
+            .convert_stream(&pid("openai_chat"), &pid("anthropic"), sse.as_bytes())
+            .unwrap();
+        let out = frames.join("");
+        assert!(out.contains("\"name\":\"bash\""), "名字要原样转过去：{out}");
+        assert!(!out.contains("bashbash"), "名字被拼了两遍：{out}");
+        let blocks = assemble(&AnthropicCodec, &out).await;
+        match &blocks[0] {
+            Block::ToolUse { name, input, .. } => {
+                assert_eq!(name, "bash");
+                assert_eq!(input["command"], "ls");
             }
             other => panic!("期望 tool_use，得到 {other:?}"),
         }

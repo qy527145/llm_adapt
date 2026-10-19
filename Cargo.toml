@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 authors = ["wmymz@icloud.com"]
@@ -15,7 +15,7 @@ description = "Production-grade LLM API abstraction layer for Rust"
 rust-version = "1.85"
 
 [workspace.dependencies]
-llm_adapt_core = { version = "0.1.0", path = "crates/llm_adapt_core" }
+llm_adapt_core = { version = "0.1.1", path = "crates/llm_adapt_core" }
 tokio        = { version = "1.40", features = ["full"] }
 reqwest      = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "socks"] }
 serde        = { version = "1", features = ["derive"] }

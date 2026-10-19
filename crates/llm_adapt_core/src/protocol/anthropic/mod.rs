@@ -462,12 +462,25 @@ fn decode_response(body: &[u8]) -> Result<WireResponse, LLMError> {
 /// index、不带 id，而 `StreamChunk::ToolCallDelta` 必须带 id。
 #[derive(Debug, Default, Clone)]
 pub struct AnthropicSseMapper {
+    state: StreamState,
+}
+
+/// 跨帧要记住的东西。
+#[derive(Debug, Default, Clone)]
+struct StreamState {
+    /// content-block index → tool_use id。
     tool_calls: std::collections::HashMap<u32, String>,
+    /// 收尾原因是不是已经报过了。
+    ///
+    /// `message_stop` 表示**传输**结束，不是「模型为什么停下」—— 它没有原因可报，
+    /// 只能合成一个 `stop`。那个合成值会盖掉先前报过的真实原因（`tool_use`、
+    /// `max_tokens` 全都变成 `stop`），所以报过就不再报。
+    finish_reported: bool,
 }
 
 impl SseMapper for AnthropicSseMapper {
     fn map(&mut self, frame: SseFrame) -> Result<SseOutcome, LLMError> {
-        parse_event(frame.event.as_deref(), &frame.data, &mut self.tool_calls)
+        parse_event(frame.event.as_deref(), &frame.data, &mut self.state)
     }
 }
 
@@ -492,7 +505,7 @@ struct EventDto {
 fn parse_event(
     event_name: Option<&str>,
     data: &str,
-    tool_calls: &mut std::collections::HashMap<u32, String>,
+    state: &mut StreamState,
 ) -> Result<SseOutcome, LLMError> {
     let dto: EventDto = serde_json::from_str(data).map_err(|e| LLMError::Parse {
         message: format!("anthropic stream: invalid JSON: {e}"),
@@ -524,7 +537,7 @@ fn parse_event(
                 let block = block_from_wire(block);
                 if let Block::ToolUse { id, .. } = &block {
                     // `input_json_delta` 只带 index、不带 id，这里先把对应关系记下。
-                    tool_calls.insert(idx, id.clone());
+                    state.tool_calls.insert(idx, id.clone());
                 }
                 out.push(StreamChunk::BlockStart { index: idx, block });
             }
@@ -564,7 +577,7 @@ fn parse_event(
                         if let Some(args) = delta.get("partial_json").and_then(|v| v.as_str()) {
                             out.push(StreamChunk::ToolCallDelta {
                                 index: idx,
-                                id: tool_calls.get(&idx).cloned().unwrap_or_default(),
+                                id: state.tool_calls.get(&idx).cloned().unwrap_or_default(),
                                 name_delta: None,
                                 arguments_delta: Some(args.to_string()),
                             });
@@ -587,6 +600,7 @@ fn parse_event(
             }
             if let Some(delta) = dto.delta {
                 if let Some(reason) = delta.get("stop_reason").and_then(|v| v.as_str()) {
+                    state.finish_reported = true;
                     out.push(StreamChunk::Finish {
                         reason: FinishReason::parse(reason),
                     });
@@ -594,7 +608,8 @@ fn parse_event(
             }
         }
         "message_stop" => {
-            if !out.iter().any(|c| matches!(c, StreamChunk::Finish { .. })) {
+            if !state.finish_reported {
+                state.finish_reported = true;
                 out.push(StreamChunk::Finish {
                     reason: FinishReason::Stop,
                 });
@@ -881,6 +896,31 @@ mod tests {
         }
         assert_eq!(acc, "hey");
         assert!(saw_finish);
+    }
+
+    /// 收尾原因不能被 `message_stop` 合成的那一个盖掉。
+    ///
+    /// `message_stop` 说的是「传输结束」，不是「模型为什么停下」—— 它合成的 `stop`
+    /// 会盖住 `message_delta` 刚报的 `tool_use`，于是「模型要调工具」这件事在收尾
+    /// 信息里消失。
+    #[tokio::test]
+    async fn message_stop_does_not_clobber_the_real_finish_reason() {
+        use futures_util::StreamExt;
+        let bytes = b"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n".to_vec();
+        let s: crate::http::ByteStream =
+            Box::pin(futures_util::stream::iter(vec![Ok(Bytes::from(bytes))]));
+        let mut out = decode_stream(&AnthropicCodec, s);
+        let mut finishes = Vec::new();
+        while let Some(c) = out.next().await {
+            if let StreamChunk::Finish { reason } = c.unwrap() {
+                finishes.push(reason);
+            }
+        }
+        assert_eq!(
+            finishes,
+            vec![FinishReason::ToolCall],
+            "只该报真实原因，且只报一次"
+        );
     }
 
     /// 初始签名（在 `content_block_start` 上）与后续 `signature_delta` 片段

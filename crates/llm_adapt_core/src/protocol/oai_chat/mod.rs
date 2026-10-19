@@ -386,12 +386,21 @@ struct UsageDto {
     completion_tokens: u32,
     #[serde(default)]
     prompt_tokens_details: Option<PromptDetailsDto>,
+    /// 输出侧的明细。推理模型（DeepSeek、o 系列）在这里报推理 token 数。
+    #[serde(default)]
+    completion_tokens_details: Option<CompletionDetailsDto>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct PromptDetailsDto {
     #[serde(default)]
     cached_tokens: u32,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct CompletionDetailsDto {
+    #[serde(default)]
+    reasoning_tokens: u32,
 }
 
 fn build_usage(u: &UsageDto) -> Usage {
@@ -402,10 +411,17 @@ fn build_usage(u: &UsageDto) -> Usage {
         .as_ref()
         .map(|d| d.cached_tokens)
         .unwrap_or(0);
+    // 推理 token **含在** `completion_tokens` 里，这里只是把它单独标出来
+    // （与 Responses 侧的 `output_tokens_details.reasoning_tokens` 同一口径）。
+    let reasoning = u
+        .completion_tokens_details
+        .as_ref()
+        .map(|d| d.reasoning_tokens)
+        .unwrap_or(0);
     Usage {
         input_tokens: u.prompt_tokens.saturating_sub(cached),
         output_tokens: u.completion_tokens,
-        thinking_tokens: 0,
+        thinking_tokens: reasoning,
         cache: CacheUsage {
             read_tokens: cached,
             write: CacheWriteUsage::default(),
@@ -534,16 +550,37 @@ fn truncate(s: &str, max: usize) -> &str {
 
 /// OpenAI 的 SSE 映射。
 ///
-/// Chat Completions **不标注内容块边界**：文本与工具调用混在同一个扁平 delta 里。
+/// Chat Completions **不标注内容块边界**：文本、思考与工具调用混在同一个扁平 delta 里。
 /// 这里按「首次出现」给它们分配块 index，并在 `finish_reason` 到达时补发 `BlockStop`，
 /// 让下游能用统一的 [`crate::types::BlockAssembler`] 组装，而不必为这个协议写特例。
+///
+/// ## `BlockStart` 里的名字与首个 `name_delta`
+///
+/// 工具名在第一片 `tool_calls` 里给全，所以它既进了 `BlockStart` 的快照，又在同一个
+/// 分片里作为 `name_delta` 出现。**这两个只能发一个** —— 下游的累加器（
+/// [`crate::types::BlockAssembler`]，以及网关方向的 anthropic 编码器）都是
+/// 「`BlockStart` 建槽、`name_delta` 往后追加」，同一份字节发两遍就拼成 `bashbash`。
+/// 这里的选择是：快照发（`name_delta: None`），因为只有快照能覆盖「厂商把名字拆成
+/// 多片」的情形 —— 那种情况下后续分片照常追加，拼出来仍然是对的。
 #[derive(Debug, Default)]
 pub struct OpenAiSseMapper {
     started: bool,
     /// 文本块占的 index（首次出现文本时分配，全流最多一个）。
     text_slot: Option<u32>,
+    /// 思考块占的 index（与文本块同理，全流最多一个）。
+    ///
+    /// 多数厂商把思考放在正文之前一次给完，但**协议并不保证顺序**：DeepSeek 的
+    /// 逐字推理流里 `reasoning_content` 与 `content` 可能交替出现。与文本块一样，
+    /// 全流只占一个 index，交错的部分由 `BlockAssembler` 按 index 归并回同一个块。
+    thinking_slot: Option<u32>,
     /// OpenAI 的 `tool_call.index` → 我们分配的块 index。
     tool_slots: std::collections::HashMap<u32, u32>,
+    /// 收尾原因是不是已经报过了。
+    ///
+    /// `[DONE]` 表示**传输**结束，不是「模型为什么停下」—— 它只能合成一个 `stop`，
+    /// 而那个合成值会盖掉刚收到没多久的真实原因（`tool_calls`、`length` 全都变成
+    /// `stop`）。所以报过就不再报。
+    finish_reported: bool,
     next: u32,
 }
 
@@ -567,15 +604,34 @@ impl OpenAiSseMapper {
         i
     }
 
+    fn thinking_block(&mut self, out: &mut Vec<StreamChunk>) -> u32 {
+        if let Some(i) = self.thinking_slot {
+            return i;
+        }
+        let i = self.alloc();
+        self.thinking_slot = Some(i);
+        out.push(StreamChunk::BlockStart {
+            index: i,
+            block: Block::Thinking {
+                text: String::new(),
+                // Chat Completions 没有思考签名的位置，这里恒定为空。
+                signature: None,
+            },
+        });
+        i
+    }
+
+    /// 建工具块（已建过就返回原 index）。返回值第二项 = **这一次是不是它建的**，
+    /// 调用方据此决定首个 `name_delta` 要不要发（见类型文档）。
     fn tool_block(
         &mut self,
         tc_index: u32,
         id: &str,
         name: Option<&str>,
         out: &mut Vec<StreamChunk>,
-    ) -> u32 {
+    ) -> (u32, bool) {
         if let Some(i) = self.tool_slots.get(&tc_index) {
-            return *i;
+            return (*i, false);
         }
         let i = self.alloc();
         self.tool_slots.insert(tc_index, i);
@@ -588,11 +644,14 @@ impl OpenAiSseMapper {
                 cache: None,
             },
         });
-        i
+        (i, true)
     }
 
     /// 给所有还开着的块补 `BlockStop`。重复调用是安全的。
     fn close_all(&mut self, out: &mut Vec<StreamChunk>) {
+        if let Some(i) = self.thinking_slot.take() {
+            out.push(StreamChunk::BlockStop { index: i });
+        }
         if let Some(i) = self.text_slot.take() {
             out.push(StreamChunk::BlockStop { index: i });
         }
@@ -619,6 +678,16 @@ impl OpenAiSseMapper {
             }
         }
         for choice in dto.choices {
+            // 思考先于正文：厂商逐字吐推理内容时两者交替出现，但**先看思考**更接近
+            // 「模型先想再答」的实况。
+            if let Some(text) = choice.delta.reasoning_content.filter(|s| !s.is_empty()) {
+                let index = self.thinking_block(&mut out);
+                out.push(StreamChunk::ThinkingDelta {
+                    index,
+                    text,
+                    signature_delta: None,
+                });
+            }
             if let Some(text) = choice.delta.content.filter(|s| !s.is_empty()) {
                 let index = self.text_block(&mut out);
                 out.push(StreamChunk::TextDelta { index, text });
@@ -632,16 +701,19 @@ impl OpenAiSseMapper {
                 // 首片带真实 id，后续分片只有 index —— 用稳定的合成 id 补上，
                 // 让下游能把同一工具调用的分片归并起来。
                 let id = tc.id.unwrap_or_else(|| format!("tc_idx_{tc_index}"));
-                let index = self.tool_block(tc_index, &id, name_delta.as_deref(), &mut out);
+                let (index, opened) =
+                    self.tool_block(tc_index, &id, name_delta.as_deref(), &mut out);
                 out.push(StreamChunk::ToolCallDelta {
                     index,
                     id,
-                    name_delta,
+                    // 首片的名字已经随 `BlockStart` 发过了，见类型文档。
+                    name_delta: if opened { None } else { name_delta },
                     arguments_delta,
                 });
             }
             if let Some(reason) = choice.finish_reason {
                 self.close_all(&mut out);
+                self.finish_reported = true;
                 out.push(StreamChunk::Finish {
                     reason: FinishReason::parse(&reason),
                 });
@@ -661,9 +733,13 @@ impl SseMapper for OpenAiSseMapper {
         if frame.data.trim() == "[DONE]" {
             let mut out = Vec::new();
             self.close_all(&mut out);
-            out.push(StreamChunk::Finish {
-                reason: FinishReason::Stop,
-            });
+            // 已经报过真实原因就不要用合成的 `stop` 盖掉它，见字段上的说明。
+            if !self.finish_reported {
+                self.finish_reported = true;
+                out.push(StreamChunk::Finish {
+                    reason: FinishReason::Stop,
+                });
+            }
             return Ok(SseOutcome {
                 chunks: out,
                 terminal: true,
@@ -697,6 +773,16 @@ struct StreamChoice {
 struct DeltaDto {
     #[serde(default)]
     content: Option<String>,
+    /// 思考增量。
+    ///
+    /// OpenAI 官方端点没有这个字段，但**镜像 chat completions schema 的厂商普遍用它**
+    /// 承载推理模型的思考：DeepSeek 与 Kimi 叫 `reasoning_content`，GLM 也叫这个。
+    /// 不认它就等于把这些模型的思考整段丢掉（而且在 JSON 层就丢了，下游无从补救）。
+    ///
+    /// 注：OpenRouter 另有一个 `reasoning` 字段，语义相同但拼法不同；等真接上那个
+    /// 渠道时再加别名 —— 现在不猜。
+    #[serde(default)]
+    reasoning_content: Option<String>,
     #[serde(default)]
     tool_calls: Vec<StreamToolCallDto>,
 }
@@ -725,7 +811,8 @@ mod tests {
     use crate::protocol::codec::decode_stream;
     use crate::protocol::ir::{Role, ToolKind, ToolSpec, WireMessage};
     use crate::types::{
-        ChatRequest, Conversation, ToolResultBlock, ToolResultContent, Turn, UserBlock, UserMessage,
+        BlockAssembler, ChatRequest, Conversation, ToolResultBlock, ToolResultContent, Turn,
+        UserBlock, UserMessage,
     };
 
     fn cfg() -> ClientConfig {
@@ -933,5 +1020,154 @@ mod tests {
         let usage = usage.expect("usage 帧必须送达");
         assert_eq!(usage.input_tokens, 9);
         assert_eq!(usage.output_tokens, 2);
+    }
+
+    /// 把一段 SSE 原文喂进 mapper，再用 `BlockAssembler` 装回内容块。
+    /// 这是**真下游**的装配方式（carter 用的就是它），所以回归测试必须走这条线，
+    /// 只断言 mapper 吐了哪些 chunk 不够 —— 名字拼两遍的 bug 正是死在装配那一步。
+    fn assemble(sse: &[u8]) -> Vec<Block> {
+        assemble_with_finish(sse).0
+    }
+
+    /// 同 [`assemble`]，另外把装配器记着的收尾原因带出来。
+    fn assemble_with_finish(sse: &[u8]) -> (Vec<Block>, Option<FinishReason>) {
+        let codec = OpenAiChatCodec;
+        let mut mapper = codec.new_stream_decoder();
+        let mut asm = BlockAssembler::new();
+        for frame in split_frames(sse) {
+            let outcome = mapper.map(frame).expect("这一帧应当能解析");
+            for c in &outcome.chunks {
+                asm.push(c);
+            }
+            if outcome.terminal {
+                break;
+            }
+        }
+        let finish = asm.finish_reason().cloned();
+        (asm.into_blocks(), finish)
+    }
+
+    /// 按空行切 SSE 帧（与 `sse::find_boundary` 同一判据，够测试用）。
+    fn split_frames(sse: &[u8]) -> Vec<SseFrame> {
+        String::from_utf8_lossy(sse)
+            .split("\n\n")
+            .filter(|b| !b.trim().is_empty())
+            .map(|block| {
+                let mut event = None;
+                let mut data: Vec<&str> = Vec::new();
+                for line in block.split('\n') {
+                    if let Some(rest) = line.strip_prefix("event:") {
+                        event = Some(rest.trim().to_string());
+                    } else if let Some(rest) = line.strip_prefix("data:") {
+                        data.push(rest.trim_start());
+                    }
+                }
+                SseFrame {
+                    event,
+                    data: data.join("\n"),
+                }
+            })
+            .collect()
+    }
+
+    /// 工具名只能出现一次。
+    ///
+    /// 上游把名字同时放进首个 `tool_calls` 分片与块首快照里，两个都往下发的话，
+    /// 「快照建槽 + 分片追加」的装配会把名字拼成 `bashbash` —— 于是模型收到
+    /// 「unknown tool: bashbash」，反复重试同一个调用（DeepSeek 上实测如此）。
+    #[test]
+    fn tool_name_is_not_doubled_by_the_assembler() {
+        let sse = b"data: {\"id\":\"c1\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"\"}}]}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+        let blocks = assemble(sse);
+        match &blocks[0] {
+            Block::ToolUse { name, input, id, .. } => {
+                assert_eq!(name, "bash", "工具名不能被拼两遍");
+                assert_eq!(input["command"], "ls", "入参分片照常拼接");
+                assert_eq!(id, "call_1");
+            }
+            other => panic!("期望 ToolUse，得到 {other:?}"),
+        }
+    }
+
+    /// 推理 token 要单独标出来（含在 completion_tokens 里，不重复计）。
+    #[tokio::test]
+    async fn reasoning_tokens_are_reported_separately() {
+        use futures_util::StreamExt;
+        let lines = b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":4253,\"completion_tokens\":183,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":119}}}\n\ndata: [DONE]\n\n".to_vec();
+        let s: crate::http::ByteStream =
+            Box::pin(futures_util::stream::iter(vec![Ok(Bytes::from(lines))]));
+        let mut out = decode_stream(&OpenAiChatCodec, s);
+        let mut usage = None;
+        while let Some(c) = out.next().await {
+            if let StreamChunk::Usage { usage: u } = c.unwrap() {
+                usage = Some(u);
+            }
+        }
+        let usage = usage.expect("usage 帧必须送达");
+        assert_eq!(usage.input_tokens, 4253, "没命中缓存时输入不折算");
+        assert_eq!(usage.output_tokens, 183, "推理 token 含在输出里，不另加");
+        assert_eq!(usage.thinking_tokens, 119);
+    }
+
+    /// 收尾原因不能被 `[DONE]` 合成的那一个盖掉。
+    ///
+    /// `[DONE]` 说的是「传输结束」，不是「模型为什么停下」。它合成的 `stop` 会盖住
+    /// 刚收到的 `tool_calls`，于是「模型要调工具」这件事在收尾信息里消失 ——
+    /// 界面把「要调用工具」显示成「正常结束」，而模型其实还没答完。
+    #[test]
+    fn done_does_not_clobber_the_real_finish_reason() {
+        let sse = b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+        let (_, finish) = assemble_with_finish(sse);
+        assert_eq!(finish, Some(FinishReason::ToolCall));
+    }
+
+    /// 上游压根没给收尾原因时，`[DONE]` 合成的 `stop` 仍要报出来。
+    #[test]
+    fn done_still_reports_a_synthetic_finish_when_upstream_gave_none() {
+        let sse = b"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+        let (_, finish) = assemble_with_finish(sse);
+        assert_eq!(finish, Some(FinishReason::Stop));
+    }
+
+    /// 厂商把名字拆成多片时，后续分片照常追加（快照不吞掉它们）。
+    #[test]
+    fn tool_name_split_across_chunks_is_joined() {
+        let sse = b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"get_\",\"arguments\":\"\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"weather\",\"arguments\":\"{}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+        let blocks = assemble(sse);
+        match &blocks[0] {
+            Block::ToolUse { name, .. } => assert_eq!(name, "get_weather"),
+            other => panic!("期望 ToolUse，得到 {other:?}"),
+        }
+    }
+
+    /// `reasoning_content` 是思考，不是正文。
+    ///
+    /// OpenAI 官方没有这个字段，但镜像该 schema 的厂商（DeepSeek / Kimi / GLM）用它
+    /// 承载推理模型的思考。认不出来就等于整段丢掉，界面上的「思考」永远不会出现。
+    #[test]
+    fn reasoning_content_becomes_thinking() {
+        let sse = b"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":null,\"reasoning_content\":\"Let me \"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":null,\"reasoning_content\":\"check the dirs\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        let blocks = assemble(sse);
+        // 思考与正文各占一块，且思考排在前面（模型先想再答）。
+        match &blocks[0] {
+            Block::Thinking { text, signature } => {
+                assert_eq!(text, "Let me check the dirs");
+                assert!(signature.is_none(), "chat completions 没有思考签名的位置");
+            }
+            other => panic!("第一块应当是思考，得到 {other:?}"),
+        }
+        match &blocks[1] {
+            Block::Text { text, .. } => assert_eq!(text, "ok"),
+            other => panic!("第二块应当是正文，得到 {other:?}"),
+        }
+    }
+
+    /// 空的 `reasoning_content`（首片常常是空串）不该凭空开一个思考块。
+    #[test]
+    fn empty_reasoning_content_does_not_open_a_block() {
+        let sse = b"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":null,\"reasoning_content\":\"\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+        let blocks = assemble(sse);
+        assert_eq!(blocks.len(), 1, "只有正文一块：{blocks:?}");
+        assert!(matches!(&blocks[0], Block::Text { .. }));
     }
 }
