@@ -166,9 +166,27 @@ impl LLMClient {
 }
 
 
-/// 把请求的归属信息挂到 HTTP 请求上，供抓包钩子关联回对话。
+/// 会话 id 的请求头。网关（如 Apilot）认它来把请求归到同一条对话，不分协议。
+pub const SESSION_ID_HEADER: &str = "session-id";
+/// 子 agent id 的请求头。同一会话里的子 agent 靠它各自成线。
+pub const AGENT_ID_HEADER: &str = "x-claude-code-agent-id";
+
+/// 把请求的归属信息挂到 HTTP 请求上：整份给抓包钩子关联回对话，会话标识另外
+/// 写成请求头给网关看。
+///
+/// 放在这里而不是各协议的编码器里：三种协议都从这一处出去，头的写法也与协议无关。
+/// 只加头、不动 body —— body 里没有对应的字段，硬塞进去就成了上游不认识的参数。
 fn tag(req: HttpRequest, meta: &crate::protocol::ir::RequestMeta) -> HttpRequest {
     let mut req = req;
+    // 没有会话就不带，也不编一个 —— 编出来的 id 会把不相干的一次性调用并成一条对话。
+    for (name, value) in [
+        (SESSION_ID_HEADER, &meta.session_id),
+        (AGENT_ID_HEADER, &meta.agent_id),
+    ] {
+        if let Some(v) = value {
+            req.headers.push((name.to_string(), v.clone()));
+        }
+    }
     // 序列化失败（几乎不可能）也只是丢掉标签，不该让请求失败。
     req.correlation = serde_json::to_value(meta).ok();
     req
@@ -284,5 +302,57 @@ mod tests {
         let caps = client.lookup_capabilities(&req);
         assert!(caps.supports_tools, "应命中 anthropic 的能力表");
         assert_eq!(caps.context_window, 200_000);
+    }
+
+    fn header<'a>(req: &'a HttpRequest, name: &str) -> Option<&'a str> {
+        req.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    fn tagged(protocol: &str, meta: crate::protocol::ir::RequestMeta) -> HttpRequest {
+        let client = LLMClient::new(ClientConfig::new("https://x", "k")).unwrap();
+        let mut wire = WireRequest::new("m");
+        wire.max_tokens = Some(16);
+        wire.meta = meta;
+        let http = client.preview_ir(&ProtocolId::new(protocol), &wire).unwrap();
+        tag(http, &wire.meta)
+    }
+
+    /// 三种协议都带会话头：网关认这个头时不看协议。
+    #[test]
+    fn session_id_becomes_a_header_on_every_protocol() {
+        for protocol in ["anthropic", "openai_chat", "openai_responses"] {
+            let meta = crate::protocol::ir::RequestMeta {
+                session_id: Some("s-1".into()),
+                ..Default::default()
+            };
+            let req = tagged(protocol, meta);
+            assert_eq!(header(&req, SESSION_ID_HEADER), Some("s-1"), "{protocol}");
+            assert_eq!(header(&req, AGENT_ID_HEADER), None, "{protocol}：主对话不带 agent 头");
+            assert!(!req.body_as_str().unwrap().contains("s-1"), "{protocol}：body 不能变");
+        }
+    }
+
+    /// 一次性调用没有会话：一个头都不带，不编值。
+    #[test]
+    fn no_session_means_no_headers() {
+        let req = tagged("anthropic", Default::default());
+        assert_eq!(header(&req, SESSION_ID_HEADER), None);
+        assert_eq!(header(&req, AGENT_ID_HEADER), None);
+    }
+
+    #[test]
+    fn subagent_carries_both_headers() {
+        let meta = crate::protocol::ir::RequestMeta {
+            session_id: Some("s-1".into()),
+            agent_id: Some("a-7".into()),
+            purpose: crate::protocol::ir::RequestPurpose::Subagent,
+            ..Default::default()
+        };
+        let req = tagged("openai_chat", meta);
+        assert_eq!(header(&req, SESSION_ID_HEADER), Some("s-1"));
+        assert_eq!(header(&req, AGENT_ID_HEADER), Some("a-7"));
     }
 }

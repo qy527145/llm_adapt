@@ -49,7 +49,7 @@ pub mod types;
 // 否则每个实现钩子的消费方都得自己依赖一次 bytes。
 pub use bytes::Bytes;
 pub use capability::{ModelCapabilities, ModelCapabilityTable};
-pub use client::{LLMClient, LLMClientBuilder};
+pub use client::{AGENT_ID_HEADER, LLMClient, LLMClientBuilder, SESSION_ID_HEADER};
 pub use error::{ErrorContext, LLMError};
 pub use http::{
     ByteStream, ClientConfig, HttpExecutor, HttpMethod, HttpRequest, ProxyConfig, RawHttpResponse,

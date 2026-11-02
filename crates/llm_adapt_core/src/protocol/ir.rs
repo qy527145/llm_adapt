@@ -611,10 +611,20 @@ pub struct WireRequest {
 }
 
 /// 请求的归属信息。抓包时靠它把「这次 HTTP 请求」对回对话里的某一段。
+///
+/// 它不进请求体，但其中的会话标识会变成请求头（`session-id` /
+/// `x-claude-code-agent-id`），让中间的网关也能按对话归类 —— 见 `client.rs` 的 `tag`。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RequestMeta {
     /// 会话 id。没有会话（一次性调用）时为 None。
     pub session_id: Option<String>,
+    /// 子 agent 的 id：同一个子 agent 的每次调用相同，不同子 agent（包括并行派出的）
+    /// 互不相同。主对话为 None。
+    ///
+    /// 网关靠 system 提示区分一条会话里的不同「线」，并行的子 agent 系统提示一模一样，
+    /// 没有它就会被并成一条线。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     /// 第几轮。
     pub turn: u32,
     /// 同一轮内的第几次模型调用 —— 工具回灌后一轮会有多次。
