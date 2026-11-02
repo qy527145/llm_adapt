@@ -231,6 +231,20 @@ impl HttpExecutor {
     }
 
     async fn send_once(&self, req: &HttpRequest) -> Result<RawHttpResponse, LLMError> {
+        // 总超时只给非流式请求套，在这里而不是在 Client 上 —— 见 `build_reqwest_client`。
+        match tokio::time::timeout(self.config.request_timeout, self.send_once_inner(req)).await {
+            Ok(r) => r,
+            Err(_) => Err(LLMError::Timeout {
+                elapsed_ms: self.config.request_timeout.as_millis(),
+                ctx: ErrorContext {
+                    retryable: true,
+                    ..ErrorContext::default()
+                },
+            }),
+        }
+    }
+
+    async fn send_once_inner(&self, req: &HttpRequest) -> Result<RawHttpResponse, LLMError> {
         let reqwest_req = self.to_reqwest(req)?;
         let resp = self
             .client
@@ -285,7 +299,10 @@ pub struct StreamMeta {
 fn build_reqwest_client(config: &ClientConfig) -> Result<Client, LLMError> {
     let mut builder = Client::builder()
         .connect_timeout(config.connect_timeout)
-        .timeout(config.request_timeout)
+        // 不用 `.timeout()`：它是整个请求（含 body 读取）的总时长，流式回答只要
+        // 生成超过这个时间就会被拦腰截断，哪怕字还在源源不断地来。这里只设读空闲
+        // 超时，非流式的总时长在 `send_once` 里单独套。
+        .read_timeout(config.stream_timeout)
         .danger_accept_invalid_certs(!config.verify_ssl);
     if let Some(proxy) = &config.proxy {
         let scheme = proxy.url.clone();
@@ -390,4 +407,86 @@ pub async fn collect_byte_stream(mut stream: ByteStream) -> Result<Bytes, LLMErr
         buf.extend_from_slice(&chunk);
     }
     Ok(buf.freeze())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    /// 起一个本地 HTTP 服务：回响应头后每隔 `gap` 吐一块 chunked body，共 `chunks` 块。
+    async fn slow_server(gap: Duration, chunks: usize) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = sock.read(&mut buf).await;
+            sock.write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n",
+            )
+            .await
+            .unwrap();
+            for _ in 0..chunks {
+                tokio::time::sleep(gap).await;
+                sock.write_all(b"2\r\nok\r\n").await.unwrap();
+            }
+            sock.write_all(b"0\r\n\r\n").await.unwrap();
+        });
+        format!("http://{addr}/")
+    }
+
+    fn executor(request_timeout: Duration, stream_timeout: Duration) -> HttpExecutor {
+        let config = ClientConfig {
+            request_timeout,
+            stream_timeout,
+            ..ClientConfig::default()
+        };
+        HttpExecutor::with_retry(config, RetryPolicy::none()).unwrap()
+    }
+
+    fn get(url: String) -> HttpRequest {
+        HttpRequest {
+            method: HttpMethod::Get,
+            url,
+            headers: Vec::new(),
+            body: Vec::new(),
+            correlation: None,
+        }
+    }
+
+    /// 回归：流式总时长超过 `request_timeout` 也不能被掐断，只要数据一直在来。
+    #[tokio::test]
+    async fn stream_outlives_request_timeout_while_data_flows() {
+        let url = slow_server(Duration::from_millis(150), 6).await;
+        let exec = executor(Duration::from_millis(300), Duration::from_millis(500));
+        let (_, stream) = exec.execute_stream(&get(url)).await.unwrap();
+        let body = collect_byte_stream(stream).await.unwrap();
+        assert_eq!(&body[..], b"okokokokokok");
+    }
+
+    /// 流卡住超过读空闲超时才报超时。
+    #[tokio::test]
+    async fn stalled_stream_hits_idle_timeout() {
+        let url = slow_server(Duration::from_millis(600), 2).await;
+        let exec = executor(Duration::from_secs(10), Duration::from_millis(200));
+        let res = match exec.execute_stream(&get(url)).await {
+            Ok((_, stream)) => collect_byte_stream(stream).await.map(|_| ()),
+            Err(e) => Err(e),
+        };
+        assert!(matches!(res, Err(LLMError::Timeout { .. })), "{res:?}");
+    }
+
+    /// 非流式请求仍受总超时约束。
+    #[tokio::test]
+    async fn non_stream_request_has_total_timeout() {
+        let url = slow_server(Duration::from_millis(150), 6).await;
+        let exec = executor(Duration::from_millis(300), Duration::from_millis(500));
+        let res = exec.execute(&get(url)).await;
+        assert!(matches!(res, Err(LLMError::Timeout { .. })), "{res:?}");
+    }
 }

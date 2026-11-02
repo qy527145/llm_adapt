@@ -75,10 +75,10 @@ fn default_connect_secs() -> u64 {
     10
 }
 fn default_request_secs() -> u64 {
-    60
+    600
 }
 fn default_stream_secs() -> u64 {
-    60
+    300
 }
 fn default_true() -> bool {
     true

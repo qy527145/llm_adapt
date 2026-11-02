@@ -34,10 +34,12 @@ pub struct ClientConfig {
     /// 建立连接阶段的超时。
     #[serde(default = "default_connect_timeout", with = "humantime_serde_compat")]
     pub connect_timeout: Duration,
-    /// 请求总超时（非流式）。
+    /// 非流式请求的总超时（发出到收完 body）。**不作用于流式请求** ——
+    /// 长回答生成几分钟是常态，按总时长掐断等于随机砍掉正在输出的回答。
     #[serde(default = "default_request_timeout", with = "humantime_serde_compat")]
     pub request_timeout: Duration,
-    /// 流打开期间的空闲超时。
+    /// 读空闲超时：连续这么久一个字节都没收到才算超时，每收到数据就重新计时。
+    /// 流式与非流式都受它约束（含等响应头的时间，思考型模型首字可能很慢）。
     #[serde(default = "default_stream_timeout", with = "humantime_serde_compat")]
     pub stream_timeout: Duration,
     /// 是否校验 TLS 服务端证书。默认 true。
@@ -79,10 +81,10 @@ fn default_connect_timeout() -> Duration {
     Duration::from_secs(10)
 }
 fn default_request_timeout() -> Duration {
-    Duration::from_secs(60)
+    Duration::from_secs(600)
 }
 fn default_stream_timeout() -> Duration {
-    Duration::from_secs(60)
+    Duration::from_secs(300)
 }
 fn default_true() -> bool {
     true
