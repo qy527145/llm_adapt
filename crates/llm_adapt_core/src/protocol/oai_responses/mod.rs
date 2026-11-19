@@ -42,7 +42,6 @@ mod stream;
 pub use inbound::ResponsesStreamEncoder;
 pub use stream::ResponsesSseMapper;
 
-
 #[derive(Debug, Default, Clone)]
 pub struct OpenAiResponsesCodec;
 
@@ -104,8 +103,6 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
     if config.base_url.is_empty() {
         return Err(LLMError::config("OpenAI Responses: base_url is empty"));
     }
-    reject_unsupported_response_format(&request.response_format)?;
-
     // 未建模字段先铺，随后被建模字段覆盖。
     let mut body = Map::new();
     for (k, v) in &request.extra {
@@ -157,6 +154,7 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
     if request.stream {
         body.insert("stream".into(), json!(true));
     }
+    response_format_to_wire(&request.response_format, &mut body);
     if let Some(thinking) = &request.thinking {
         // Responses 只用 effort；预算由模型自己定。
         let effort = thinking.effort.clone().unwrap_or_else(|| "medium".into());
@@ -173,15 +171,24 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
     Ok(Value::Object(body))
 }
 
-/// Responses 用 `text.format` 而不是 `response_format`。两种结构化输出都还没建模，
-/// 与其静默丢掉让调用方以为生效了，不如明确报错。
-fn reject_unsupported_response_format(fmt: &ResponseFormat) -> Result<(), LLMError> {
-    match fmt {
-        ResponseFormat::Text => Ok(()),
-        other => Err(LLMError::unsupported(format!(
-            "openai_responses 渠道尚未支持结构化输出（{other:?}）"
-        ))),
+/// 结构化输出 → `text.format`（Responses 不用 Chat 的 `response_format`）。
+///
+/// 并进已有的 `text`（调用方可能经 `extra` 带了 `verbosity`），而不是整个覆盖。
+fn response_format_to_wire(fmt: &ResponseFormat, body: &mut Map<String, Value>) {
+    let format = match fmt {
+        ResponseFormat::Text => return,
+        ResponseFormat::Json => json!({"type": "json_object"}),
+        ResponseFormat::JsonSchema {
+            name,
+            schema,
+            strict,
+        } => json!({"type": "json_schema", "name": name, "schema": schema, "strict": strict}),
+    };
+    let slot = body.entry("text".to_string()).or_insert_with(|| json!({}));
+    if !slot.is_object() {
+        *slot = json!({});
     }
+    slot["format"] = format;
 }
 
 fn tool_to_wire(t: &ToolSpec) -> Value {
@@ -856,15 +863,26 @@ mod tests {
         assert_eq!(resp.usage.output_tokens, 50);
     }
 
-    /// 结构化输出尚未建模：明确报错，不静默丢弃。
+    /// 结构化输出落到 `text.format`，且不覆盖调用方经 `extra` 带的其它 `text` 字段。
     #[test]
-    fn structured_output_is_rejected_not_silently_dropped() {
+    fn structured_output_goes_into_text_format() {
         let mut ir = WireRequest::new("gpt-5");
+        ir.extra.insert("text".into(), json!({"verbosity": "low"}));
+        ir.response_format = ResponseFormat::JsonSchema {
+            name: "title".into(),
+            schema: json!({"type": "object"}),
+            strict: true,
+        };
+        let body = build_body(&ir, &cfg()).unwrap();
+        assert_eq!(body["text"]["verbosity"], json!("low"));
+        assert_eq!(
+            body["text"]["format"],
+            json!({"type": "json_schema", "name": "title", "schema": {"type": "object"}, "strict": true})
+        );
+
         ir.response_format = ResponseFormat::Json;
-        let err = OpenAiResponsesCodec
-            .encode_request(&ir, &cfg())
-            .unwrap_err();
-        assert!(matches!(err, LLMError::Unsupported { .. }), "实际 {err:?}");
+        let body = build_body(&ir, &cfg()).unwrap();
+        assert_eq!(body["text"]["format"], json!({"type": "json_object"}));
     }
 
     // ------------------------------------------------------------------

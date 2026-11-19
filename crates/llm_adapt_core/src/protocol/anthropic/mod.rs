@@ -16,7 +16,8 @@ use crate::http::{ClientConfig, HttpMethod, HttpRequest};
 use crate::protocol::codec::{Codec, StreamEncoder};
 use crate::protocol::ir::{
     Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource, Protocol,
-    ProtocolId, ToolChoice, ToolResultBlock, ToolResultContent, Usage, WireRequest, WireResponse,
+    ProtocolId, ResponseFormat, ToolChoice, ToolResultBlock, ToolResultContent, Usage, WireRequest,
+    WireResponse,
 };
 use crate::sse::{SseFrame, SseMapper, SseOutcome};
 use crate::types::StreamChunk;
@@ -24,7 +25,6 @@ use crate::types::StreamChunk;
 mod inbound;
 
 pub use inbound::AnthropicStreamEncoder;
-
 
 pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -140,6 +140,7 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
     if let Some(user) = &request.user_id {
         body.insert("metadata".into(), json!({"user_id": user}));
     }
+    response_format_to_wire(&request.response_format, &mut body)?;
 
     if !request.tools.is_empty() {
         let tools: Vec<Value> = request.tools.iter().map(tool_to_wire).collect();
@@ -160,6 +161,36 @@ pub fn build_body(request: &WireRequest, config: &ClientConfig) -> Result<Value,
     }
 
     Ok(Value::Object(body))
+}
+
+/// 结构化输出 → `output_config.format`。
+///
+/// 并进已有的 `output_config`（调用方可能经 `extra` 带了 `effort`），而不是整个覆盖。
+/// Anthropic 没有「任意 JSON」模式，`Json` 明确报错 —— 静默丢掉会让调用方以为生效了。
+fn response_format_to_wire(
+    fmt: &ResponseFormat,
+    body: &mut serde_json::Map<String, Value>,
+) -> Result<(), LLMError> {
+    let format = match fmt {
+        ResponseFormat::Text => return Ok(()),
+        ResponseFormat::Json => {
+            return Err(LLMError::unsupported(
+                "anthropic 渠道没有 json_object 模式，请改用 JsonSchema",
+            ));
+        }
+        // Anthropic 的 format 不带 name / strict：约束解码本身就是严格的。
+        ResponseFormat::JsonSchema { schema, .. } => {
+            json!({"type": "json_schema", "schema": schema})
+        }
+    };
+    let slot = body
+        .entry("output_config".to_string())
+        .or_insert_with(|| json!({}));
+    if !slot.is_object() {
+        *slot = json!({});
+    }
+    slot["format"] = format;
+    Ok(())
 }
 
 fn cache_control_value(marker: &CacheMarker) -> Value {
@@ -644,6 +675,36 @@ mod tests {
 
     fn cfg() -> ClientConfig {
         ClientConfig::new("https://api.anthropic.com", "sk-ant-test")
+    }
+
+    /// 结构化输出落到 `output_config.format`，且与调用方经 `extra` 带的 `effort` 并存。
+    #[test]
+    fn structured_output_goes_into_output_config() {
+        let mut ir = WireRequest::new("claude-x");
+        ir.max_tokens = Some(64);
+        ir.extra
+            .insert("output_config".into(), json!({"effort": "low"}));
+        ir.response_format = ResponseFormat::JsonSchema {
+            name: "title".into(),
+            schema: json!({"type": "object"}),
+            strict: true,
+        };
+        let body = build_body(&ir, &cfg()).unwrap();
+        assert_eq!(body["output_config"]["effort"], json!("low"));
+        assert_eq!(
+            body["output_config"]["format"],
+            json!({"type": "json_schema", "schema": {"type": "object"}})
+        );
+
+        ir.response_format = ResponseFormat::Text;
+        let body = build_body(&ir, &cfg()).unwrap();
+        assert!(body["output_config"].get("format").is_none());
+
+        ir.response_format = ResponseFormat::Json;
+        assert!(matches!(
+            build_body(&ir, &cfg()).unwrap_err(),
+            LLMError::Unsupported { .. }
+        ));
     }
 
     /// 走一遍 ergonomic → IR → wire，测试里少写样板。
