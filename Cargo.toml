@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 authors = ["wmymz@icloud.com"]
@@ -15,7 +15,7 @@ description = "Production-grade LLM API abstraction layer for Rust"
 rust-version = "1.85"
 
 [workspace.dependencies]
-llm_adapt_core = { version = "0.1.3", path = "crates/llm_adapt_core" }
+llm_adapt_core = { version = "0.2.0", path = "crates/llm_adapt_core" }
 tokio        = { version = "1.40", features = ["full"] }
 # 0.13 起 TLS feature 叫 `rustls`（原 `rustls-tls`）。不开 `json`：请求体/响应体都是自己
 # 用 serde_json 编解码的。下游 carter / rmcp 都已经在 0.13 上，这里跟上去避免同一个
