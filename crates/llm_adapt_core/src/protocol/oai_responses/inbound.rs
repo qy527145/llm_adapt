@@ -16,10 +16,10 @@ use serde_json::{Value, json};
 use crate::error::LLMError;
 use crate::protocol::codec::StreamEncoder;
 use crate::protocol::ir::{
-    Block, FinishReason, ImageSource, Role, ToolChoice, ToolKind, ToolResultContent,
-    ToolSpec, Usage, WireMessage, WireRequest, WireResponse,
+    Block, FinishReason, ImageSource, Role, ToolChoice, ToolKind, ToolResultContent, ToolSpec,
+    Usage, WireMessage, WireRequest, WireResponse,
 };
-use crate::protocol::shared::{now_secs, synth_id, sse_named};
+use crate::protocol::shared::{now_secs, sse_named, synth_id};
 use crate::types::StreamChunk;
 
 /// 已建模的顶层字段；其余（`store` / `previous_response_id` / `include` …）进 `extra`
@@ -62,7 +62,10 @@ pub(crate) fn decode_request(body: &[u8]) -> Result<WireRequest, LLMError> {
         .get("max_output_tokens")
         .and_then(Value::as_u64)
         .map(|m| m as u32);
-    req.temperature = obj.get("temperature").and_then(Value::as_f64).map(|f| f as f32);
+    req.temperature = obj
+        .get("temperature")
+        .and_then(Value::as_f64)
+        .map(|f| f as f32);
     req.top_p = obj.get("top_p").and_then(Value::as_f64).map(|f| f as f32);
 
     if let Some(instr) = obj.get("instructions").and_then(Value::as_str) {
@@ -242,7 +245,9 @@ fn decode_message_content(v: &Value) -> Vec<Block> {
                     }
                     "input_image" => Block::Image {
                         source: ImageSource::from_url(
-                            p.get("image_url").and_then(Value::as_str).unwrap_or_default(),
+                            p.get("image_url")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default(),
                         ),
                         detail: None,
                         cache: None,
@@ -340,7 +345,9 @@ fn decode_tool_choice(v: &Value) -> ToolChoice {
         Value::Object(_) => v
             .get("name")
             .and_then(Value::as_str)
-            .map(|n| ToolChoice::Specific { name: n.to_string() })
+            .map(|n| ToolChoice::Specific {
+                name: n.to_string(),
+            })
             .unwrap_or_default(),
         _ => ToolChoice::Auto,
     }
@@ -439,8 +446,13 @@ fn flush_text_run(run: &mut Vec<Value>, out: &mut Vec<Value>) {
 /// delta 事件纯粹用于界面回显（见 PROTOCOL_MATRIX 的硬契约一节）。
 #[derive(Clone)]
 enum ItemKind {
-    Message { text: String },
-    Reasoning { text: String, encrypted: Option<String> },
+    Message {
+        text: String,
+    },
+    Reasoning {
+        text: String,
+        encrypted: Option<String>,
+    },
     /// `(call_id, name, arguments)`
     Tool(String, String, String),
 }
@@ -562,7 +574,12 @@ impl ResponsesStreamEncoder {
         if self.items.contains_key(&oi) {
             return;
         }
-        self.items.insert(oi, ItemKind::Message { text: String::new() });
+        self.items.insert(
+            oi,
+            ItemKind::Message {
+                text: String::new(),
+            },
+        );
         out.push(self.ev(
             "response.output_item.added",
             json!({
@@ -750,10 +767,7 @@ impl StreamEncoder for ResponsesStreamEncoder {
 
             StreamChunk::Error { error } => {
                 self.ensure_started(&mut out);
-                out.push(self.ev(
-                    "error",
-                    json!({ "type": "api_error", "message": error }),
-                ));
+                out.push(self.ev("error", json!({ "type": "api_error", "message": error })));
             }
         }
         Ok(out)
@@ -811,10 +825,10 @@ impl StreamEncoder for ResponsesStreamEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
     use crate::http::ClientConfig;
     use crate::protocol::codec::Codec;
     use crate::protocol::oai_responses::OpenAiResponsesCodec;
+    use bytes::Bytes;
 
     fn cfg() -> ClientConfig {
         ClientConfig::new("https://api.openai.com", "sk")
@@ -838,9 +852,7 @@ mod tests {
 
     #[test]
     fn instructions_become_system() {
-        let (ir, _) = roundtrip(
-            r#"{"model":"m","instructions":"be brief","input":"hi"}"#,
-        );
+        let (ir, _) = roundtrip(r#"{"model":"m","instructions":"be brief","input":"hi"}"#);
         assert_eq!(ir.system[0].as_text(), Some("be brief"));
     }
 
@@ -886,7 +898,9 @@ mod tests {
                 {"type":"function_call_output","call_id":"call_1","output":"result"}]}"#,
         );
         match &ir.messages[0].content[0] {
-            Block::ToolUse { id, name, input, .. } => {
+            Block::ToolUse {
+                id, name, input, ..
+            } => {
                 assert_eq!(id, "call_1");
                 assert_eq!(name, "search");
                 assert_eq!(input["q"], "x");
@@ -933,9 +947,8 @@ mod tests {
 
     #[test]
     fn unknown_top_level_fields_pass_through() {
-        let (ir, out) = roundtrip(
-            r#"{"model":"m","input":"x","store":false,"previous_response_id":"r1"}"#,
-        );
+        let (ir, out) =
+            roundtrip(r#"{"model":"m","input":"x","store":false,"previous_response_id":"r1"}"#);
         assert_eq!(ir.extra.get("store"), Some(&json!(false)));
         assert_eq!(out["store"], false);
         assert_eq!(out["previous_response_id"], "r1");
@@ -1013,7 +1026,12 @@ mod tests {
         let evs = parsed(&out);
         assert_eq!(evs[0].0, "response.created");
         assert_eq!(evs.last().unwrap().0, "response.completed");
-        assert_eq!(out.iter().filter(|f| f.contains("response.created")).count(), 1);
+        assert_eq!(
+            out.iter()
+                .filter(|f| f.contains("response.created"))
+                .count(),
+            1
+        );
     }
 
     /// 工具调用：done 必须带拼全的 item（Codex 只从 done 的 item 里取）。
@@ -1063,8 +1081,14 @@ mod tests {
         assert_eq!(done.1["item"]["name"], "exec_command");
         assert_eq!(done.1["item"]["arguments"], r#"{"cmd":"ls"}"#);
         // done 必须早于 response.completed。
-        let di = evs.iter().position(|(e, _)| e == "response.output_item.done").unwrap();
-        let ci = evs.iter().position(|(e, _)| e == "response.completed").unwrap();
+        let di = evs
+            .iter()
+            .position(|(e, _)| e == "response.output_item.done")
+            .unwrap();
+        let ci = evs
+            .iter()
+            .position(|(e, _)| e == "response.completed")
+            .unwrap();
         assert!(di < ci);
     }
 
@@ -1084,7 +1108,10 @@ mod tests {
         out.extend(enc.finish().unwrap());
         let evs = parsed(&out);
 
-        let ai = evs.iter().position(|(e, _)| e == "response.output_item.added").unwrap();
+        let ai = evs
+            .iter()
+            .position(|(e, _)| e == "response.output_item.added")
+            .unwrap();
         let di = evs
             .iter()
             .position(|(e, _)| e == "response.reasoning_summary_text.delta")

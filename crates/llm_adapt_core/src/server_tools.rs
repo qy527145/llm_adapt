@@ -11,7 +11,7 @@
 //! 静默丢弃是最坏的选项 —— 用户以为开了联网搜索，模型其实一个结果都拿不到，
 //! 而模型自己也不知道，只会一本正经地编。
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::protocol::ir::{Protocol, ToolKind, ToolSpec};
 
@@ -148,7 +148,9 @@ mod tests {
 
     #[test]
     fn anthropic_web_search_carries_version_and_max_uses() {
-        let spec = ServerTool::WebSearch.spec(Protocol::Anthropic, Some(3)).unwrap();
+        let spec = ServerTool::WebSearch
+            .spec(Protocol::Anthropic, Some(3))
+            .unwrap();
         assert_eq!(spec["type"], "web_search_20250305");
         assert_eq!(spec["name"], "web_search");
         assert_eq!(spec["max_uses"], 3);
@@ -156,15 +158,20 @@ mod tests {
 
     #[test]
     fn responses_web_search_is_the_bare_type() {
-        let spec = ServerTool::WebSearch.spec(Protocol::OpenAiResponses, Some(9)).unwrap();
-        assert_eq!(spec, json!({"type": "web_search"}), "Responses 不带版本号也不认 max_uses");
+        let spec = ServerTool::WebSearch
+            .spec(Protocol::OpenAiResponses, Some(9))
+            .unwrap();
+        assert_eq!(
+            spec,
+            json!({"type": "web_search"}),
+            "Responses 不带版本号也不认 max_uses"
+        );
     }
 
     /// Chat Completions 没有服务端工具的对应物 —— 必须报出来，不能静默丢。
     #[test]
     fn chat_reports_server_tools_as_unsupported() {
-        let (ok, dropped) =
-            resolve_specs(Protocol::OpenAiChat, &["web_search".to_string()], None);
+        let (ok, dropped) = resolve_specs(Protocol::OpenAiChat, &["web_search".to_string()], None);
         assert!(ok.is_empty());
         assert_eq!(dropped, vec!["web_search".to_string()]);
     }

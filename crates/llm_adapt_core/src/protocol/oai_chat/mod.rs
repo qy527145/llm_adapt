@@ -28,7 +28,6 @@ mod inbound;
 
 pub use inbound::ChatStreamEncoder;
 
-
 #[derive(Debug, Default, Clone)]
 pub struct OpenAiChatCodec;
 
@@ -1080,7 +1079,9 @@ mod tests {
         let sse = b"data: {\"id\":\"c1\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"\"}}]}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
         let blocks = assemble(sse);
         match &blocks[0] {
-            Block::ToolUse { name, input, id, .. } => {
+            Block::ToolUse {
+                name, input, id, ..
+            } => {
                 assert_eq!(name, "bash", "工具名不能被拼两遍");
                 assert_eq!(input["command"], "ls", "入参分片照常拼接");
                 assert_eq!(id, "call_1");

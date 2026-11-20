@@ -127,11 +127,7 @@ impl ProtocolConverter {
     ///
     /// 用 `encode_request` 取 body 而不是各协议私有的 body builder：这样自定义协议
     /// （只要实现了 `Codec`）也能参与转换，不必认识每一个内置协议的内部函数。
-    fn encode_request_body(
-        &self,
-        to: &ProtocolId,
-        req: &WireRequest,
-    ) -> Result<Vec<u8>, LLMError> {
+    fn encode_request_body(&self, to: &ProtocolId, req: &WireRequest) -> Result<Vec<u8>, LLMError> {
         let codec = self.registry.get(to)?;
         let mut req = req.clone();
         if to.protocol() == Some(Protocol::Anthropic) && req.max_tokens.is_none() {
@@ -151,12 +147,8 @@ impl ProtocolConverter {
 /// 调用点只在**跨协议**转换上；同协议直通必须原样保留，否则多轮带工具的对话会崩。
 pub fn strip_unportable_thinking(req: &mut WireRequest, target: Protocol) {
     for msg in &mut req.messages {
-        msg.content.retain(|b| {
-            !matches!(
-                b,
-                Block::Thinking { .. } | Block::RedactedThinking { .. }
-            )
-        });
+        msg.content
+            .retain(|b| !matches!(b, Block::Thinking { .. } | Block::RedactedThinking { .. }));
     }
     if target != Protocol::Anthropic {
         if let Some(t) = &mut req.thinking {
@@ -242,13 +234,13 @@ impl StreamConverter {
 mod tests {
     use super::*;
     use crate::http::ByteStream;
-    use crate::protocol::codec::decode_stream;
-    use crate::protocol::codec::Codec;
     use crate::protocol::anthropic::AnthropicCodec;
+    use crate::protocol::codec::Codec;
+    use crate::protocol::codec::decode_stream;
+    use crate::protocol::ir::{Role, ToolKind};
     use crate::protocol::oai_chat::OpenAiChatCodec;
     use crate::protocol::oai_responses::OpenAiResponsesCodec;
     use crate::protocol::register_defaults;
-    use crate::protocol::ir::{Role, ToolKind};
     use crate::types::BlockAssembler;
     use bytes::Bytes;
     use futures_util::StreamExt;
@@ -361,7 +353,9 @@ mod tests {
         let c = converter();
         for id in IDS {
             let raw = body_for(id);
-            let out = c.convert_request(&pid(id), &pid(id), raw.as_bytes()).unwrap();
+            let out = c
+                .convert_request(&pid(id), &pid(id), raw.as_bytes())
+                .unwrap();
             assert_eq!(out, raw.as_bytes(), "{id} 同协议请求必须字节不变");
         }
     }
@@ -371,7 +365,9 @@ mod tests {
         let c = converter();
         for id in IDS {
             let raw = resp_for(id);
-            let out = c.convert_response(&pid(id), &pid(id), raw.as_bytes()).unwrap();
+            let out = c
+                .convert_response(&pid(id), &pid(id), raw.as_bytes())
+                .unwrap();
             assert_eq!(out, raw.as_bytes(), "{id} 同协议响应必须字节不变");
         }
     }
@@ -429,16 +425,28 @@ mod tests {
     fn loss_thinking_is_stripped_when_leaving_anthropic() {
         let c = converter();
         let out = c
-            .convert_request(&pid("anthropic"), &pid("openai_chat"), ANTHROPIC_REQ.as_bytes())
+            .convert_request(
+                &pid("anthropic"),
+                &pid("openai_chat"),
+                ANTHROPIC_REQ.as_bytes(),
+            )
             .unwrap();
         let dump = String::from_utf8(out).unwrap();
         assert!(!dump.contains("\"hmm\""), "思考正文不该跨协议带走");
         assert!(!dump.contains("\"signature\""), "思考签名不该跨协议带走");
         // 同协议直通时签名必须原样保留。
         let kept = c
-            .convert_request(&pid("anthropic"), &pid("anthropic"), ANTHROPIC_REQ.as_bytes())
+            .convert_request(
+                &pid("anthropic"),
+                &pid("anthropic"),
+                ANTHROPIC_REQ.as_bytes(),
+            )
             .unwrap();
-        assert!(String::from_utf8(kept).unwrap().contains("\"signature\":\"sig\""));
+        assert!(
+            String::from_utf8(kept)
+                .unwrap()
+                .contains("\"signature\":\"sig\"")
+        );
     }
 
     /// 损耗 #1 后半：目标不是 Anthropic 时清掉 budget_tokens。
@@ -456,10 +464,7 @@ mod tests {
         // 反过来（→ Anthropic）必须保留：那边唯一的思考参数就是它。
         let mut to_anthropic = req.clone();
         strip_unportable_thinking(&mut to_anthropic, Protocol::Anthropic);
-        assert_eq!(
-            to_anthropic.thinking.unwrap().budget_tokens,
-            Some(2048)
-        );
+        assert_eq!(to_anthropic.thinking.unwrap().budget_tokens, Some(2048));
     }
 
     /// 损耗 #2：`cache_control` 只在直通时保留。
@@ -468,12 +473,18 @@ mod tests {
         let body = r#"{"model":"m","max_tokens":1,"messages":[{"role":"user","content":[
             {"type":"text","text":"x","cache_control":{"type":"ephemeral"}}]}]}"#;
         let c = converter();
-        let kept = c.convert_request(&pid("anthropic"), &pid("anthropic"), body.as_bytes()).unwrap();
+        let kept = c
+            .convert_request(&pid("anthropic"), &pid("anthropic"), body.as_bytes())
+            .unwrap();
         assert!(String::from_utf8(kept).unwrap().contains("cache_control"));
         let crossed = c
             .convert_request(&pid("anthropic"), &pid("openai_chat"), body.as_bytes())
             .unwrap();
-        assert!(!String::from_utf8(crossed).unwrap().contains("cache_control"));
+        assert!(
+            !String::from_utf8(crossed)
+                .unwrap()
+                .contains("cache_control")
+        );
     }
 
     /// 损耗 #3：Responses 的 `additional_tools` 折叠进普通 tools（否则 Codex 无工具可用）。
@@ -485,7 +496,11 @@ mod tests {
             {"type":"message","role":"user","content":[{"type":"input_text","text":"list"}]}]}"#;
         let c = converter();
         let out = c
-            .convert_request(&pid("openai_responses"), &pid("openai_chat"), body.as_bytes())
+            .convert_request(
+                &pid("openai_responses"),
+                &pid("openai_chat"),
+                body.as_bytes(),
+            )
             .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
         let tools = v["tools"].as_array().expect("转换后必须带上 tools");
@@ -497,10 +512,17 @@ mod tests {
     fn loss_finish_reason_normalized_but_unknown_preserved() {
         let c = converter();
         let out = c
-            .convert_response(&pid("anthropic"), &pid("openai_chat"), ANTHROPIC_RESP.as_bytes())
+            .convert_response(
+                &pid("anthropic"),
+                &pid("openai_chat"),
+                ANTHROPIC_RESP.as_bytes(),
+            )
             .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
-        assert_eq!(v["choices"][0]["finish_reason"], "tool_calls", "tool_use 应归一成 tool_calls");
+        assert_eq!(
+            v["choices"][0]["finish_reason"], "tool_calls",
+            "tool_use 应归一成 tool_calls"
+        );
 
         // 枚举外的取值（pause_turn）不该被吞。
         let raw = br#"{"id":"m","model":"m","content":[],"stop_reason":"pause_turn"}"#;
@@ -517,7 +539,11 @@ mod tests {
         let c = converter();
         // ANTHROPIC_REQ 带了 service_tier，Anthropic 没建模它 → 应出现在 Chat 请求体里。
         let out = c
-            .convert_request(&pid("anthropic"), &pid("openai_chat"), ANTHROPIC_REQ.as_bytes())
+            .convert_request(
+                &pid("anthropic"),
+                &pid("openai_chat"),
+                ANTHROPIC_REQ.as_bytes(),
+            )
             .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["service_tier"], "standard_only");
@@ -542,12 +568,18 @@ mod tests {
         let body = r#"{"model":"m","input":"x","tools":[
             {"type":"custom","name":"apply_patch","description":"patch"}]}"#;
         // IR 层认得出它是 Freeform。
-        let ir = OpenAiResponsesCodec.decode_request(body.as_bytes()).unwrap();
+        let ir = OpenAiResponsesCodec
+            .decode_request(body.as_bytes())
+            .unwrap();
         assert!(matches!(ir.tools[0].kind, ToolKind::Freeform));
 
         let c = converter();
         let out = c
-            .convert_request(&pid("openai_responses"), &pid("openai_chat"), body.as_bytes())
+            .convert_request(
+                &pid("openai_responses"),
+                &pid("openai_chat"),
+                body.as_bytes(),
+            )
             .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["tools"][0]["function"]["name"], "apply_patch");
@@ -562,7 +594,9 @@ mod tests {
             {"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"AAA"},"title":"a.pdf"},
             {"type":"text","text":"look"}]}]}"#;
         let c = converter();
-        let kept = c.convert_request(&pid("anthropic"), &pid("anthropic"), body.as_bytes()).unwrap();
+        let kept = c
+            .convert_request(&pid("anthropic"), &pid("anthropic"), body.as_bytes())
+            .unwrap();
         assert!(String::from_utf8(kept).unwrap().contains("document"));
         let crossed = c
             .convert_request(&pid("anthropic"), &pid("openai_chat"), body.as_bytes())
@@ -575,12 +609,18 @@ mod tests {
     fn tool_call_ids_survive_cross_protocol() {
         let c = converter();
         let out = c
-            .convert_request(&pid("anthropic"), &pid("openai_responses"), ANTHROPIC_REQ.as_bytes())
+            .convert_request(
+                &pid("anthropic"),
+                &pid("openai_responses"),
+                ANTHROPIC_REQ.as_bytes(),
+            )
             .unwrap();
         let v: Value = serde_json::from_slice(&out).unwrap();
         let items = v["input"].as_array().unwrap();
         assert!(
-            items.iter().any(|i| i["type"] == "function_call" && i["call_id"] == "tu_1"),
+            items
+                .iter()
+                .any(|i| i["type"] == "function_call" && i["call_id"] == "tu_1"),
             "工具调用 id 必须原样保留：{v}"
         );
         assert!(
@@ -638,11 +678,21 @@ mod tests {
     async fn stream_anthropic_to_responses_round_trips_text() {
         let c = converter();
         let frames = c
-            .convert_stream(&pid("anthropic"), &pid("openai_responses"), ANTHROPIC_SSE.as_bytes())
+            .convert_stream(
+                &pid("anthropic"),
+                &pid("openai_responses"),
+                ANTHROPIC_SSE.as_bytes(),
+            )
             .unwrap();
         let out = frames.join("");
-        assert!(out.contains("response.created"), "responses 流必须先发 created");
-        assert!(out.contains("response.completed"), "responses 流必须收尾 completed");
+        assert!(
+            out.contains("response.created"),
+            "responses 流必须先发 created"
+        );
+        assert!(
+            out.contains("response.completed"),
+            "responses 流必须收尾 completed"
+        );
         let blocks = assemble(&OpenAiResponsesCodec, &out).await;
         assert_eq!(blocks, vec![Block::text("hello")]);
     }
@@ -651,7 +701,11 @@ mod tests {
     async fn stream_anthropic_to_chat_round_trips_text() {
         let c = converter();
         let frames = c
-            .convert_stream(&pid("anthropic"), &pid("openai_chat"), ANTHROPIC_SSE.as_bytes())
+            .convert_stream(
+                &pid("anthropic"),
+                &pid("openai_chat"),
+                ANTHROPIC_SSE.as_bytes(),
+            )
             .unwrap();
         let out = frames.join("");
         assert!(out.contains("[DONE]"), "chat 流必须以 [DONE] 收尾");
@@ -723,7 +777,11 @@ mod tests {
     async fn stream_same_protocol_is_passthrough() {
         let c = converter();
         let frames = c
-            .convert_stream(&pid("openai_chat"), &pid("openai_chat"), ANTHROPIC_SSE.as_bytes())
+            .convert_stream(
+                &pid("openai_chat"),
+                &pid("openai_chat"),
+                ANTHROPIC_SSE.as_bytes(),
+            )
             .unwrap();
         assert_eq!(frames.len(), 1);
     }

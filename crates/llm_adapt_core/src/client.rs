@@ -165,7 +165,6 @@ impl LLMClient {
     }
 }
 
-
 /// 会话 id 的请求头。网关（如 Apilot）认它来把请求归到同一条对话，不分协议。
 pub const SESSION_ID_HEADER: &str = "session-id";
 /// 子 agent id 的请求头。同一会话里的子 agent 靠它各自成线。
@@ -316,7 +315,9 @@ mod tests {
         let mut wire = WireRequest::new("m");
         wire.max_tokens = Some(16);
         wire.meta = meta;
-        let http = client.preview_ir(&ProtocolId::new(protocol), &wire).unwrap();
+        let http = client
+            .preview_ir(&ProtocolId::new(protocol), &wire)
+            .unwrap();
         tag(http, &wire.meta)
     }
 
@@ -330,8 +331,15 @@ mod tests {
             };
             let req = tagged(protocol, meta);
             assert_eq!(header(&req, SESSION_ID_HEADER), Some("s-1"), "{protocol}");
-            assert_eq!(header(&req, AGENT_ID_HEADER), None, "{protocol}：主对话不带 agent 头");
-            assert!(!req.body_as_str().unwrap().contains("s-1"), "{protocol}：body 不能变");
+            assert_eq!(
+                header(&req, AGENT_ID_HEADER),
+                None,
+                "{protocol}：主对话不带 agent 头"
+            );
+            assert!(
+                !req.body_as_str().unwrap().contains("s-1"),
+                "{protocol}：body 不能变"
+            );
         }
     }
 

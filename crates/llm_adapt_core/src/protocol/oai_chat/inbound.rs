@@ -17,10 +17,10 @@ use serde_json::{Map, Value, json};
 use crate::error::LLMError;
 use crate::protocol::codec::StreamEncoder;
 use crate::protocol::ir::{
-    Block, FinishReason, ImageSource, Protocol, ThinkingConfig, ToolChoice, ToolKind, ToolResultContent,
-    ToolSpec, Usage, WireMessage, WireRequest, WireResponse,
+    Block, FinishReason, ImageSource, Protocol, ThinkingConfig, ToolChoice, ToolKind,
+    ToolResultContent, ToolSpec, Usage, WireMessage, WireRequest, WireResponse,
 };
-use crate::protocol::shared::{now_secs, synth_id, sse_frame};
+use crate::protocol::shared::{now_secs, sse_frame, synth_id};
 use crate::types::StreamChunk;
 
 /// 已建模的顶层字段；其余进 `extra` 透传。
@@ -69,7 +69,10 @@ pub(crate) fn decode_request(body: &[u8]) -> Result<WireRequest, LLMError> {
         .or_else(|| obj.get("max_completion_tokens"))
         .and_then(Value::as_u64)
         .map(|m| m as u32);
-    req.temperature = obj.get("temperature").and_then(Value::as_f64).map(|f| f as f32);
+    req.temperature = obj
+        .get("temperature")
+        .and_then(Value::as_f64)
+        .map(|f| f as f32);
     req.top_p = obj.get("top_p").and_then(Value::as_f64).map(|f| f as f32);
 
     req.stop = match obj.get("stop") {
@@ -172,8 +175,10 @@ fn decode_message(v: &Value, req: &mut WireRequest) {
                     });
                 }
             }
-            req.messages
-                .push(WireMessage::new(crate::protocol::ir::Role::Assistant, blocks));
+            req.messages.push(WireMessage::new(
+                crate::protocol::ir::Role::Assistant,
+                blocks,
+            ));
         }
         _ => {
             req.messages.push(WireMessage::new(
@@ -195,9 +200,9 @@ fn decode_content(v: &Value) -> Vec<Block> {
 
 fn decode_part(v: &Value) -> Block {
     match v.get("type").and_then(Value::as_str).unwrap_or("text") {
-        "text" | "input_text" => Block::text(
-            v.get("text").and_then(Value::as_str).unwrap_or_default(),
-        ),
+        "text" | "input_text" => {
+            Block::text(v.get("text").and_then(Value::as_str).unwrap_or_default())
+        }
         "image_url" => {
             let url = v
                 .get("image_url")
@@ -216,9 +221,7 @@ fn decode_part(v: &Value) -> Block {
             }
         }
         // refusal 是一条拒绝说明，当普通文本带走。
-        "refusal" => Block::text(
-            v.get("refusal").and_then(Value::as_str).unwrap_or_default(),
-        ),
+        "refusal" => Block::text(v.get("refusal").and_then(Value::as_str).unwrap_or_default()),
         // 认不出的 part 整块留着（与 Anthropic 侧同一个处置）。
         _ => Block::Unmodeled { raw: v.clone() },
     }
@@ -245,10 +248,7 @@ fn tool_result_text(v: &Value) -> ToolResultContent {
 }
 
 fn decode_tool(v: &Value) -> Option<ToolSpec> {
-    let ty = v
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("function");
+    let ty = v.get("type").and_then(Value::as_str).unwrap_or("function");
     let func = v.get("function").unwrap_or(v);
     let name = func.get("name").and_then(Value::as_str)?.to_string();
     let kind = if ty == "function" {
@@ -284,7 +284,9 @@ fn decode_tool_choice(v: &Value) -> ToolChoice {
             .and_then(|f| f.get("name"))
             .or_else(|| v.get("name"))
             .and_then(Value::as_str)
-            .map(|n| ToolChoice::Specific { name: n.to_string() })
+            .map(|n| ToolChoice::Specific {
+                name: n.to_string(),
+            })
             .unwrap_or_default(),
         _ => ToolChoice::Auto,
     }
@@ -592,10 +594,10 @@ impl StreamEncoder for ChatStreamEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
     use crate::http::ClientConfig;
     use crate::protocol::codec::Codec;
     use crate::protocol::oai_chat::OpenAiChatCodec;
+    use bytes::Bytes;
 
     fn cfg() -> ClientConfig {
         ClientConfig::new("https://api.openai.com", "sk")
@@ -682,9 +684,8 @@ mod tests {
     /// 不是像 apilot 那样在用户设置上合并 —— 这是既有出站行为，本任务不改。
     #[test]
     fn stream_options_land_in_extra_and_include_usage_is_forced() {
-        let (ir, out) = roundtrip(
-            r#"{"model":"m","messages":[],"stream":true,"stream_options":{"custom":1}}"#,
-        );
+        let (ir, out) =
+            roundtrip(r#"{"model":"m","messages":[],"stream":true,"stream_options":{"custom":1}}"#);
         assert!(ir.extra.contains_key("stream_options"));
         assert_eq!(out["stream_options"]["include_usage"], true);
     }
@@ -695,7 +696,9 @@ mod tests {
             {"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],
             "usage":{"prompt_tokens":1000,"completion_tokens":5,
                      "prompt_tokens_details":{"cached_tokens":800}}}"#;
-        let resp = OpenAiChatCodec.decode_response(Bytes::from_static(raw)).unwrap();
+        let resp = OpenAiChatCodec
+            .decode_response(Bytes::from_static(raw))
+            .unwrap();
         let out: Value = serde_json::from_slice(&encode_response(&resp).unwrap()).unwrap();
         assert_eq!(out["object"], "chat.completion");
         assert_eq!(out["choices"][0]["message"]["content"], "hi");
@@ -770,10 +773,10 @@ mod tests {
         }
         let indices: Vec<u64> = out
             .iter()
-            .filter_map(|f| serde_json::from_str::<Value>(f.trim_start_matches("data: ").trim_end()).ok())
-            .filter_map(|v| {
-                v["choices"][0]["delta"]["tool_calls"][0]["index"].as_u64()
+            .filter_map(|f| {
+                serde_json::from_str::<Value>(f.trim_start_matches("data: ").trim_end()).ok()
             })
+            .filter_map(|v| v["choices"][0]["delta"]["tool_calls"][0]["index"].as_u64())
             .collect();
         assert_eq!(indices, vec![0, 1]);
     }

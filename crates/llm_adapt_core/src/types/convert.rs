@@ -46,7 +46,7 @@ pub fn lift_request(req: &ChatRequest) -> WireRequest {
     out.response_format = req.response_format.clone();
     // 布尔开关 + 可选预算 → 可选配置。关掉时必须是 None，否则会在 wire 上多出
     // 一个「thinking: 关」的字段，某些上游会因此报错。
-    out.thinking = req.enable_thinking.then(|| ThinkingConfig {
+    out.thinking = req.enable_thinking.then_some(ThinkingConfig {
         budget_tokens: req.thinking_budget,
         effort: None,
     });

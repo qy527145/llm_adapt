@@ -14,13 +14,12 @@ use std::collections::HashMap;
 use serde_json::{Map, Value, json};
 
 use crate::error::LLMError;
-use crate::protocol::ir::{
-    Block, CacheMarker, FinishReason, ImageSource, Protocol, ThinkingConfig, ToolChoice,
-    ToolKind, ToolResultBlock, ToolResultContent, ToolSpec, Usage, WireMessage, WireRequest,
-    WireResponse,
-};
-use crate::protocol::shared::{synth_id, sse_named};
 use crate::protocol::codec::StreamEncoder;
+use crate::protocol::ir::{
+    Block, CacheMarker, FinishReason, ImageSource, Protocol, ThinkingConfig, ToolChoice, ToolKind,
+    ToolResultBlock, ToolResultContent, ToolSpec, Usage, WireMessage, WireRequest, WireResponse,
+};
+use crate::protocol::shared::{sse_named, synth_id};
 use crate::types::StreamChunk;
 
 /// 已建模的顶层字段；不在这张表里的一律进 `extra` 原样透传。
@@ -63,7 +62,10 @@ pub(crate) fn decode_request(body: &[u8]) -> Result<WireRequest, LLMError> {
         .get("max_tokens")
         .and_then(Value::as_u64)
         .map(|m| m as u32);
-    req.temperature = obj.get("temperature").and_then(Value::as_f64).map(|f| f as f32);
+    req.temperature = obj
+        .get("temperature")
+        .and_then(Value::as_f64)
+        .map(|f| f as f32);
     req.top_p = obj.get("top_p").and_then(Value::as_f64).map(|f| f as f32);
     req.stop = obj
         .get("stop_sequences")
@@ -188,10 +190,7 @@ fn decode_block(v: &Value) -> Block {
                 .unwrap_or_default()
                 .to_string(),
             content: decode_tool_result_content(v.get("content").unwrap_or(&Value::Null)),
-            is_error: v
-                .get("is_error")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
+            is_error: v.get("is_error").and_then(Value::as_bool).unwrap_or(false),
             cache,
         },
         "thinking" => Block::Thinking {
@@ -219,14 +218,12 @@ fn decode_block(v: &Value) -> Block {
 
 fn decode_image_source(source: Option<&Value>) -> ImageSource {
     let Some(src) = source else {
-        return ImageSource::Url {
-            url: String::new(),
-        };
+        return ImageSource::Url { url: String::new() };
     };
     match src.get("type").and_then(Value::as_str) {
-        Some("url") => ImageSource::from_url(
-            src.get("url").and_then(Value::as_str).unwrap_or_default(),
-        ),
+        Some("url") => {
+            ImageSource::from_url(src.get("url").and_then(Value::as_str).unwrap_or_default())
+        }
         _ => ImageSource::Base64 {
             media_type: src
                 .get("media_type")
@@ -324,7 +321,9 @@ fn decode_tool_choice(v: &Value) -> ToolChoice {
         Some("tool") => v
             .get("name")
             .and_then(Value::as_str)
-            .map(|n| ToolChoice::Specific { name: n.to_string() })
+            .map(|n| ToolChoice::Specific {
+                name: n.to_string(),
+            })
             .unwrap_or_default(),
         _ => ToolChoice::Auto,
     }
@@ -339,7 +338,10 @@ pub(crate) fn encode_response(resp: &WireResponse) -> Result<Vec<u8>, LLMError> 
     obj.insert("id".into(), json!(resp.id.clone().unwrap_or_default()));
     obj.insert("type".into(), json!("message"));
     obj.insert("role".into(), json!("assistant"));
-    obj.insert("model".into(), json!(resp.model.clone().unwrap_or_default()));
+    obj.insert(
+        "model".into(),
+        json!(resp.model.clone().unwrap_or_default()),
+    );
     obj.insert(
         "content".into(),
         Value::Array(resp.content.iter().map(super::block_to_wire).collect()),
@@ -363,10 +365,7 @@ fn encode_usage(u: &Usage) -> Value {
     m.insert("input_tokens".into(), json!(u.input_tokens));
     m.insert("output_tokens".into(), json!(u.output_tokens));
     if u.cache.read_tokens > 0 {
-        m.insert(
-            "cache_read_input_tokens".into(),
-            json!(u.cache.read_tokens),
-        );
+        m.insert("cache_read_input_tokens".into(), json!(u.cache.read_tokens));
     }
     if u.cache.write.total > 0 {
         m.insert(
@@ -469,11 +468,7 @@ impl AnthropicStreamEncoder {
         self.close_open_block(out);
         let content_block = match self.kinds.get(&index).copied() {
             Some(BlockKind::ToolUse) => {
-                let (id, name) = self
-                    .tool_meta
-                    .get(&index)
-                    .cloned()
-                    .unwrap_or_default();
+                let (id, name) = self.tool_meta.get(&index).cloned().unwrap_or_default();
                 json!({ "type": "tool_use", "id": id, "name": name, "input": {} })
             }
             Some(BlockKind::Thinking) => json!({ "type": "thinking", "thinking": "" }),
@@ -673,10 +668,10 @@ impl StreamEncoder for AnthropicStreamEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
     use crate::http::ClientConfig;
     use crate::protocol::anthropic::AnthropicCodec;
     use crate::protocol::codec::Codec;
+    use bytes::Bytes;
 
     fn cfg() -> ClientConfig {
         ClientConfig::new("https://api.anthropic.com", "sk-ant")

@@ -344,11 +344,9 @@ fn flush_parts(parts: &mut Vec<Value>, role: &str, out: &mut Vec<Value>) {
 // 响应解码
 // ---------------------------------------------------------------------------
 
-/// 请求里已被显式建模、编码时会重新写出的顶层字段。
-///
-/// 不在这里的一律由 [`WireRequest::extra`] 原样透传 —— 尤其有状态语义的
-/// `store` / `previous_response_id` / `include`（后者是让思考内容能往返的关键），
-/// 刻意不做建模，让它们无损穿过本层。
+// 请求侧没有「已建模字段」表：凡是没被显式建模的顶层字段一律由 `WireRequest::extra`
+// 原样透传 —— 尤其有状态语义的 `store` / `previous_response_id` / `include`
+// （后者是让思考内容能往返的关键），刻意不做建模，让它们无损穿过本层。
 
 /// Responses 的 usage → IR 口径。
 ///

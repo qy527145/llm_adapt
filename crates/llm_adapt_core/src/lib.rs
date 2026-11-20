@@ -57,11 +57,12 @@ pub use http::{
 };
 pub use protocol::ir::{
     Block, CacheMarker, CacheTtl, CacheUsage, CacheWriteUsage, FinishReason, ImageSource,
-    RequestMeta, RequestPurpose, ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind, ToolResultBlock, ToolResultContent,
-    ToolSpec, Usage, UsageSource, WireMessage, WireRequest, WireResponse,
+    RequestMeta, RequestPurpose, ResponseFormat, Role, ThinkingConfig, ToolChoice, ToolKind,
+    ToolResultBlock, ToolResultContent, ToolSpec, Usage, UsageSource, WireMessage, WireRequest,
+    WireResponse,
 };
-pub use server_tools::{resolve_specs, spec_from_raw, ServerTool};
 pub use protocol::{Codec, Protocol, ProtocolId, ProtocolRegistry, StreamEncoder, decode_stream};
+pub use server_tools::{ServerTool, resolve_specs, spec_from_raw};
 pub use sse::{ChunkStream, SseChunkStream, SseFrame, SseMapper, SseOutcome};
 pub use types::{
     AssistantBlock, AssistantMessage, BlockAssembler, ChatRequest, ChatResponse, Conversation,

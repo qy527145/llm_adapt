@@ -465,10 +465,11 @@ impl WireMessage {
 ///
 /// `Function` 是本地函数工具（我们要自己执行）；其余是**服务端工具**——由模型厂商
 /// 自己执行，我们只负责声明和理解它回传的活动块。形状参考 codex 的 `ToolSpec`。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ToolKind {
     /// 本地函数工具。
+    #[default]
     Function,
     /// 厂商托管的服务端工具（web_search / web_fetch / code_execution / ...）。
     /// `spec` 是原样的厂商声明对象，由各 codec 负责填装与降级。
@@ -478,12 +479,6 @@ pub enum ToolKind {
     /// 一组打包工具（codex Responses Lite 的 `type: "namespace"`）。
     /// 出站编码一律只用裸 `name`：函数名只允许 `[a-zA-Z0-9_-]`，带点的会被上游拒掉。
     Namespace { name: String },
-}
-
-impl Default for ToolKind {
-    fn default() -> Self {
-        ToolKind::Function
-    }
 }
 
 /// 下发给模型的工具声明。
